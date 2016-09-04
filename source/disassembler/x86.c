@@ -50,9 +50,7 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                     byteCounter++; break;
                 // Others
                 case 0x68:
-                    instr.imm_32 =
-                        MAKE_LONG(code[byteCounter+4], code[byteCounter+3],
-                        code[byteCounter+2], code[byteCounter+1]);
+                    instr.imm_32 =          *(uint32_t*)&code[byteCounter+1];
                     byteCounter += 5; break;
                 case 0x83:
                     instr.modRegRm  = code[byteCounter+1];
@@ -67,9 +65,7 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
-                            instr.disp_32 = MAKE_LONG(
-                                code[byteCounter+5], code[byteCounter+4],
-                                code[byteCounter+3], code[byteCounter+2]);
+                            instr.disp_32 = *(uint32_t*)&code[byteCounter+2]);
                             byteCounter++;
                         }
                     }
@@ -84,7 +80,7 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                 case 0xB5:
                 case 0xB6:
                 case 0xB7:
-                    instr.imm_8     = code[byteCounter+1];
+                    instr.imm_8 =   code[byteCounter+1];
                     byteCounter += 2; break;
                 case 0xB8:
                 case 0xB9:
@@ -94,9 +90,7 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                 case 0xBD:
                 case 0xBE:
                 case 0xBF:
-                    instr.imm_32 =
-                        MAKE_LONG(code[byteCounter+4], code[byteCounter+3],
-                        code[byteCounter+2], code[byteCounter+1]);
+                    instr.imm_32 =  *(uint32_t*)&code[byteCounter+1]);
                     byteCounter += 5; break;
                 case 0xC3:
                     byteCounter++; break;
@@ -104,9 +98,7 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                     byteCounter++; break;
                 case 0xE8:
                     // TODO: Evaluate accuracy of relative offsets.
-                    instr.rel_32 =
-                        MAKE_LONG(code[byteCounter+4], code[byteCounter+3],
-                        code[byteCounter+2], code[byteCounter+1]);
+                    instr.rel_32 =  *(uint32_t*)&code[byteCounter+1]);
                     byteCounter += 5; break;
                 default:
                     byteCounter++; break;
@@ -122,7 +114,7 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
 }
 
 // return the number of bytes handled.
-int parsePrefix(unsigned char byte){
+int parsePrefix(uint8_t byte){
     int numOfBytesHandled = 0;
     switch (byte) {
         case 0xF0: // LOCK
@@ -136,6 +128,8 @@ int parsePrefix(unsigned char byte){
         case 0xF3: // REP or REPE/REPZ
             numOfBytesHandled++;
             printf("[Unhandled Prefix 'Rep{,e,z}']");
+            struct Instruction instr = { 0 };
+            instr.instructionPrefix[0] = byte;
             /*
             Some of what I've seen;
             F3 A6 = repe cmpsb

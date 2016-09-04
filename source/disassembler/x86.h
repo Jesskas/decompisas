@@ -15,8 +15,6 @@
 #define EDI 0x7 // DI/BH 111
 extern const char* reglist[8];
 
-#define MAKE_LONG(x, y, z, w)   ((x << 24) | (y << 16) | (z << 8) | (w))
-
 // Addressing modes for Mod-Reg-R/M
 #define INDIR_ADDR         0x00
 #define INDIR_ADDR8        0x40 // 8-bit displacement added to val
