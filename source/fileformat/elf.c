@@ -44,26 +44,21 @@ void parseElf32(FILE* fp, long fileSize)
     elfHeader32.ei_version =    buffer[0x06];
     elfHeader32.ei_osabi =      buffer[0x07];
     elfHeader32.ei_abiversion = buffer[0x08];
-    elfHeader32.e_type =    MAKE_SHORT(buffer[0x11], buffer[0x10]);
-    elfHeader32.e_machine = MAKE_SHORT(buffer[0x13], buffer[0x12]);
-    elfHeader32.e_version =
-      MAKE_LONG(buffer[0x17], buffer[0x16], buffer[0x15], buffer[0x14]);
-    elfHeader32.e_entry =
-      MAKE_LONG(buffer[0x1B], buffer[0x1A], buffer[0x19], buffer[0x18]);
-    elfHeader32.e_phoff =
-      MAKE_LONG(buffer[0x1F], buffer[0x1E], buffer[0x1D], buffer[0x1C]);
-    elfHeader32.e_shoff =
-      MAKE_LONG(buffer[0x23], buffer[0x22], buffer[0x21], buffer[0x20]);
-    elfHeader32.e_flags =
-      MAKE_LONG(buffer[0x27], buffer[0x26], buffer[0x25], buffer[0x24]);
-    elfHeader32.e_ehsize =    MAKE_SHORT(buffer[0x29], buffer[0x28]);
-    elfHeader32.e_phentsize = MAKE_SHORT(buffer[0x2B], buffer[0x2A]);
-    elfHeader32.e_phnum =     MAKE_SHORT(buffer[0x2D], buffer[0x2C]);
-    elfHeader32.e_shentsize = MAKE_SHORT(buffer[0x2F], buffer[0x2E]);
-    elfHeader32.e_shnum =     MAKE_SHORT(buffer[0x31], buffer[0x30]);
-    elfHeader32.e_shstrndx =  MAKE_SHORT(buffer[0x33], buffer[0x32]);
+    // ei_pad currently unused
+    elfHeader32.e_type =        *(uint16_t*)&buffer[0x10];
+    elfHeader32.e_machine =     *(uint16_t*)&buffer[0x12];
+    elfHeader32.e_version =     *(uint32_t*)&buffer[0x14];
+    elfHeader32.e_entry =       *(uint32_t*)&buffer[0x18];
+    elfHeader32.e_phoff =       *(uint32_t*)&buffer[0x1C];
+    elfHeader32.e_shoff =       *(uint32_t*)&buffer[0x20];
+    elfHeader32.e_flags =       *(uint32_t*)&buffer[0x24];
+    elfHeader32.e_ehsize =      *(uint16_t*)&buffer[0x28];
+    elfHeader32.e_phentsize =   *(uint16_t*)&buffer[0x2A];
+    elfHeader32.e_phnum =       *(uint16_t*)&buffer[0x2C];
+    elfHeader32.e_shentsize =   *(uint16_t*)&buffer[0x2E];
+    elfHeader32.e_shnum =       *(uint16_t*)&buffer[0x30];
+    elfHeader32.e_shstrndx =    *(uint16_t*)&buffer[0x32];
     free(buffer);
-
 
     // 32-bit Program Headers
     // if not there already, seek to program header offset found in elfHeader
@@ -93,30 +88,14 @@ void parseElf32(FILE* fp, long fileSize)
         int cur_phoff = (i * elfHeader32.e_phentsize);
         struct Program_Header_32 cur_programHeader = { 0 };
 
-        cur_programHeader.p_type =
-            MAKE_LONG(buffer[cur_phoff+0x03], buffer[cur_phoff+0x02],
-                buffer[cur_phoff+0x01], buffer[cur_phoff+0x00]);
-        cur_programHeader.p_offset =
-            MAKE_LONG(buffer[cur_phoff+0x07], buffer[cur_phoff+0x06],
-              buffer[cur_phoff+0x05], buffer[cur_phoff+0x04]);
-        cur_programHeader.p_vaddr =
-            MAKE_LONG(buffer[cur_phoff+0x0B], buffer[cur_phoff+0x0A],
-                buffer[cur_phoff+0x09], buffer[cur_phoff+0x08]);
-        cur_programHeader.p_paddr =
-            MAKE_LONG(buffer[cur_phoff+0x0F], buffer[cur_phoff+0x0E],
-              buffer[cur_phoff+0x0D], buffer[cur_phoff+0x0C]);
-        cur_programHeader.p_filesz =
-            MAKE_LONG(buffer[cur_phoff+0x13], buffer[cur_phoff+0x12],
-                buffer[cur_phoff+0x11], buffer[cur_phoff+0x10]);
-        cur_programHeader.p_memsz =
-            MAKE_LONG(buffer[cur_phoff+0x17], buffer[cur_phoff+0x16],
-                buffer[cur_phoff+0x15], buffer[cur_phoff+0x14]);
-        cur_programHeader.p_flags =
-            MAKE_LONG(buffer[cur_phoff+0x1B], buffer[cur_phoff+0x1A],
-                buffer[cur_phoff+0x19], buffer[cur_phoff+0x18]);
-        cur_programHeader.p_align =
-            MAKE_LONG(buffer[cur_phoff+0x1F], buffer[cur_phoff+0x1E],
-                buffer[cur_phoff+0x1D], buffer[cur_phoff+0x1C]);
+        cur_programHeader.p_type =          *(uint32_t*)&buffer[cur_phoff+0x00];
+        cur_programHeader.p_offset =        *(uint32_t*)&buffer[cur_phoff+0x04];
+        cur_programHeader.p_vaddr =         *(uint32_t*)&buffer[cur_phoff+0x08];
+        cur_programHeader.p_paddr =         *(uint32_t*)&buffer[cur_phoff+0x0C];
+        cur_programHeader.p_filesz =        *(uint32_t*)&buffer[cur_phoff+0x10];
+        cur_programHeader.p_memsz =         *(uint32_t*)&buffer[cur_phoff+0x14];
+        cur_programHeader.p_flags =         *(uint32_t*)&buffer[cur_phoff+0x18];
+        cur_programHeader.p_align =         *(uint32_t*)&buffer[cur_phoff+0x1C];
 
         memcpy(&programHeaders[i], &cur_programHeader,
             elfHeader32.e_phentsize);
@@ -150,36 +129,16 @@ void parseElf32(FILE* fp, long fileSize)
         int cur_shoff = (i * elfHeader32.e_shentsize);
         struct Section_Header_32 cur_sectionHeader = { 0 };
 
-        cur_sectionHeader.sh_name =
-            MAKE_LONG(buffer[cur_shoff+0x03], buffer[cur_shoff+0x02],
-                buffer[cur_shoff+0x01], buffer[cur_shoff+0x00]);
-        cur_sectionHeader.sh_type =
-            MAKE_LONG(buffer[cur_shoff+0x07], buffer[cur_shoff+0x06],
-              buffer[cur_shoff+0x05], buffer[cur_shoff+0x04]);
-        cur_sectionHeader.sh_flags =
-            MAKE_LONG(buffer[cur_shoff+0x0B], buffer[cur_shoff+0x0A],
-                buffer[cur_shoff+0x09], buffer[cur_shoff+0x08]);
-        cur_sectionHeader.sh_address =
-            MAKE_LONG(buffer[cur_shoff+0x0F], buffer[cur_shoff+0x0E],
-              buffer[cur_shoff+0x0D], buffer[cur_shoff+0x0C]);
-        cur_sectionHeader.sh_offset =
-            MAKE_LONG(buffer[cur_shoff+0x13], buffer[cur_shoff+0x12],
-                buffer[cur_shoff+0x11], buffer[cur_shoff+0x10]);
-        cur_sectionHeader.sh_size =
-            MAKE_LONG(buffer[cur_shoff+0x17], buffer[cur_shoff+0x16],
-                buffer[cur_shoff+0x15], buffer[cur_shoff+0x14]);
-        cur_sectionHeader.sh_link =
-            MAKE_LONG(buffer[cur_shoff+0x1B], buffer[cur_shoff+0x1A],
-                buffer[cur_shoff+0x19], buffer[cur_shoff+0x18]);
-        cur_sectionHeader.sh_info =
-            MAKE_LONG(buffer[cur_shoff+0x1F], buffer[cur_shoff+0x1E],
-                buffer[cur_shoff+0x1D], buffer[cur_shoff+0x1C]);
-        cur_sectionHeader.sh_addralign =
-            MAKE_LONG(buffer[cur_shoff+0x23], buffer[cur_shoff+0x22],
-                buffer[cur_shoff+0x21], buffer[cur_shoff+0x20]);
-        cur_sectionHeader.sh_entsize =
-            MAKE_LONG(buffer[cur_shoff+0x27], buffer[cur_shoff+0x26],
-                buffer[cur_shoff+0x25], buffer[cur_shoff+0x24]);
+        cur_sectionHeader.sh_name =         *(uint32_t*)&buffer[cur_shoff+0x00];
+        cur_sectionHeader.sh_type =         *(uint32_t*)&buffer[cur_shoff+0x04];
+        cur_sectionHeader.sh_flags =        *(uint32_t*)&buffer[cur_shoff+0x08];
+        cur_sectionHeader.sh_address =      *(uint32_t*)&buffer[cur_shoff+0x0C];
+        cur_sectionHeader.sh_offset =       *(uint32_t*)&buffer[cur_shoff+0x10];
+        cur_sectionHeader.sh_size =         *(uint32_t*)&buffer[cur_shoff+0x14];
+        cur_sectionHeader.sh_link =         *(uint32_t*)&buffer[cur_shoff+0x18];
+        cur_sectionHeader.sh_info =         *(uint32_t*)&buffer[cur_shoff+0x1C];
+        cur_sectionHeader.sh_addralign =    *(uint32_t*)&buffer[cur_shoff+0x20];
+        cur_sectionHeader.sh_entsize =      *(uint32_t*)&buffer[cur_shoff+0x24];
 
         memcpy(&sectionHeaders[i], &cur_sectionHeader,
             elfHeader32.e_shentsize);
@@ -224,28 +183,20 @@ void parseElf64(FILE* fp, long fileSize)
     elfHeader64.ei_version =    buffer[0x06];
     elfHeader64.ei_osabi =      buffer[0x07];
     elfHeader64.ei_abiversion = buffer[0x08];
-    elfHeader64.e_type =    MAKE_SHORT(buffer[0x11], buffer[0x10]);
-    elfHeader64.e_machine = MAKE_SHORT(buffer[0x13], buffer[0x12]);
-    elfHeader64.e_version =
-      MAKE_LONG(buffer[0x17], buffer[0x16], buffer[0x15], buffer[0x14]);
+    elfHeader64.e_type =        *(uint16_t*)&buffer[0x10];
+    elfHeader64.e_machine =     *(uint16_t*)&buffer[0x12];
+    elfHeader64.e_version =     *(uint32_t*)&buffer[0x14];
     /* 64-bit differences begin */
-    elfHeader64.e_entry = (
-    MAKE_LP1(buffer[0x1F], buffer[0x1E], buffer[0x1D], buffer[0x1C]) << 32)
-    | (MAKE_LONG(buffer[0x1B], buffer[0x1A], buffer[0x19], buffer[0x18]));
-    elfHeader64.e_phoff = (
-    MAKE_LP1(buffer[0x27], buffer[0x26], buffer[0x25], buffer[0x24]) << 32)
-    | MAKE_LONG(buffer[0x23], buffer[0x22], buffer[0x21], buffer[0x20]);
-    elfHeader64.e_shoff = (
-    MAKE_LP1(buffer[0x2F], buffer[0x2E], buffer[0x2D], buffer[0x2C]) << 32)
-    | MAKE_LONG(buffer[0x2B], buffer[0x2A], buffer[0x29], buffer[0x28]);
-    elfHeader64.e_flags =
-      MAKE_LONG(buffer[0x33], buffer[0x32], buffer[0x31], buffer[0x30]);
-    elfHeader64.e_ehsize =    MAKE_SHORT(buffer[0x35], buffer[0x34]);
-    elfHeader64.e_phentsize = MAKE_SHORT(buffer[0x37], buffer[0x36]);
-    elfHeader64.e_phnum =     MAKE_SHORT(buffer[0x39], buffer[0x38]);
-    elfHeader64.e_shentsize = MAKE_SHORT(buffer[0x3B], buffer[0x3A]);
-    elfHeader64.e_shnum =     MAKE_SHORT(buffer[0x3D], buffer[0x3C]);
-    elfHeader64.e_shstrndx =  MAKE_SHORT(buffer[0x3F], buffer[0x3E]);
+    elfHeader64.e_entry =       *(uint64_t*)&buffer[0x18];
+    elfHeader64.e_phoff =       *(uint64_t*)&buffer[0x20];
+    elfHeader64.e_shoff =       *(uint64_t*)&buffer[0x28];
+    elfHeader64.e_flags =       *(uint32_t*)&buffer[0x30];
+    elfHeader64.e_ehsize =      *(uint16_t*)&buffer[0x34];
+    elfHeader64.e_phentsize =   *(uint16_t*)&buffer[0x36];
+    elfHeader64.e_phnum =       *(uint16_t*)&buffer[0x38];
+    elfHeader64.e_shentsize =   *(uint16_t*)&buffer[0x3A];
+    elfHeader64.e_shnum =       *(uint16_t*)&buffer[0x3C];
+    elfHeader64.e_shstrndx =    *(uint16_t*)&buffer[0x3E];
     free(buffer);
 
 
@@ -277,42 +228,14 @@ void parseElf64(FILE* fp, long fileSize)
         int cur_phoff = (i * elfHeader64.e_phentsize);
         struct Program_Header_64 cur_programHeader = { 0 };
 
-        cur_programHeader.p_type =
-            MAKE_LONG(buffer[cur_phoff+0x03], buffer[cur_phoff+0x02],
-                buffer[cur_phoff+0x01], buffer[cur_phoff+0x00]);
-        cur_programHeader.p_flags =
-            MAKE_LONG(buffer[cur_phoff+0x07], buffer[cur_phoff+0x06],
-              buffer[cur_phoff+0x05], buffer[cur_phoff+0x04]);
-        cur_programHeader.p_offset = (
-            MAKE_LP1(buffer[cur_phoff+0x0F], buffer[cur_phoff+0x0E],
-                buffer[cur_phoff+0x0D], buffer[cur_phoff+0x0C]) << 32)
-                    | (MAKE_LONG(buffer[cur_phoff+0x0B], buffer[cur_phoff+0x0A],
-                        buffer[cur_phoff+0x09], buffer[cur_phoff+0x08]));
-        cur_programHeader.p_vaddr = (
-            MAKE_LP1(buffer[cur_phoff+0x17], buffer[cur_phoff+0x16],
-                buffer[cur_phoff+0x15], buffer[cur_phoff+0x14]) << 32)
-                    | (MAKE_LONG(buffer[cur_phoff+0x13], buffer[cur_phoff+0x12],
-                        buffer[cur_phoff+0x11], buffer[cur_phoff+0x10]));
-        cur_programHeader.p_paddr = (
-            MAKE_LP1(buffer[cur_phoff+0x1F], buffer[cur_phoff+0x1E],
-                buffer[cur_phoff+0x1D], buffer[cur_phoff+0x1C]) << 32)
-                    | (MAKE_LONG(buffer[cur_phoff+0x1B], buffer[cur_phoff+0x1A],
-                        buffer[cur_phoff+0x19], buffer[cur_phoff+0x18]));
-        cur_programHeader.p_filesz = (
-            MAKE_LP1(buffer[cur_phoff+0x27], buffer[cur_phoff+0x26],
-                buffer[cur_phoff+0x25], buffer[cur_phoff+0x24]) << 32)
-                    | (MAKE_LONG(buffer[cur_phoff+0x23], buffer[cur_phoff+0x22],
-                        buffer[cur_phoff+0x21], buffer[cur_phoff+0x20]));
-        cur_programHeader.p_memsz = (
-            MAKE_LP1(buffer[cur_phoff+0x2F], buffer[cur_phoff+0x2E],
-                buffer[cur_phoff+0x2D], buffer[cur_phoff+0x2C]) << 32)
-                    | (MAKE_LONG(buffer[cur_phoff+0x2B], buffer[cur_phoff+0x2A],
-                        buffer[cur_phoff+0x29], buffer[cur_phoff+0x28]));
-        cur_programHeader.p_align = (
-            MAKE_LP1(buffer[cur_phoff+0x37], buffer[cur_phoff+0x36],
-                buffer[cur_phoff+0x35], buffer[cur_phoff+0x34]) << 32)
-                    | (MAKE_LONG(buffer[cur_phoff+0x33], buffer[cur_phoff+0x32],
-                        buffer[cur_phoff+0x31], buffer[cur_phoff+0x30]));
+        cur_programHeader.p_type =          *(uint32_t*)&buffer[cur_phoff+0x00];
+        cur_programHeader.p_offset =        *(uint32_t*)&buffer[cur_phoff+0x04];
+        cur_programHeader.p_offset =        *(uint64_t*)&buffer[cur_phoff+0x08];
+        cur_programHeader.p_vaddr =         *(uint64_t*)&buffer[cur_phoff+0x10];
+        cur_programHeader.p_paddr =         *(uint64_t*)&buffer[cur_phoff+0x18];
+        cur_programHeader.p_filesz =        *(uint64_t*)&buffer[cur_phoff+0x20];
+        cur_programHeader.p_memsz =         *(uint64_t*)&buffer[cur_phoff+0x28];
+        cur_programHeader.p_align =         *(uint64_t*)&buffer[cur_phoff+0x30];
 
         memcpy(&programHeaders[i], &cur_programHeader,
             elfHeader64.e_phentsize);
@@ -346,48 +269,16 @@ void parseElf64(FILE* fp, long fileSize)
         int cur_shoff = (i * elfHeader64.e_shentsize);
         struct Section_Header_64 cur_sectionHeader = { 0 };
 
-        cur_sectionHeader.sh_name =
-            MAKE_LONG(buffer[cur_shoff+0x03], buffer[cur_shoff+0x02],
-                buffer[cur_shoff+0x01], buffer[cur_shoff+0x00]);
-        cur_sectionHeader.sh_type =
-            MAKE_LONG(buffer[cur_shoff+0x07], buffer[cur_shoff+0x06],
-              buffer[cur_shoff+0x05], buffer[cur_shoff+0x04]);
-        cur_sectionHeader.sh_flags = (
-            MAKE_LP1(buffer[cur_shoff+0x0F], buffer[cur_shoff+0x0E],
-                buffer[cur_shoff+0x0D], buffer[cur_shoff+0x0C]) << 32)
-                    | (MAKE_LONG(buffer[cur_shoff+0x0B], buffer[cur_shoff+0x0A],
-                        buffer[cur_shoff+0x09], buffer[cur_shoff+0x08]));
-        cur_sectionHeader.sh_address = (
-            MAKE_LP1(buffer[cur_shoff+0x17], buffer[cur_shoff+0x16],
-                buffer[cur_shoff+0x15], buffer[cur_shoff+0x14]) << 32)
-                    | (MAKE_LONG(buffer[cur_shoff+0x13], buffer[cur_shoff+0x12],
-                        buffer[cur_shoff+0x11], buffer[cur_shoff+0x10]));
-        cur_sectionHeader.sh_offset = (
-            MAKE_LP1(buffer[cur_shoff+0x1F], buffer[cur_shoff+0x1E],
-                buffer[cur_shoff+0x1D], buffer[cur_shoff+0x1C]) << 32)
-                    | (MAKE_LONG(buffer[cur_shoff+0x1B], buffer[cur_shoff+0x1A],
-                        buffer[cur_shoff+0x19], buffer[cur_shoff+0x18]));
-        cur_sectionHeader.sh_size = (
-            MAKE_LP1(buffer[cur_shoff+0x27], buffer[cur_shoff+0x26],
-                buffer[cur_shoff+0x25], buffer[cur_shoff+0x24]) << 32)
-                    | (MAKE_LONG(buffer[cur_shoff+0x23], buffer[cur_shoff+0x22],
-                        buffer[cur_shoff+0x21], buffer[cur_shoff+0x20]));
-        cur_sectionHeader.sh_link =
-            MAKE_LONG(buffer[cur_shoff+0x2B], buffer[cur_shoff+0x2A],
-                buffer[cur_shoff+0x29], buffer[cur_shoff+0x28]);
-        cur_sectionHeader.sh_info =
-            MAKE_LONG(buffer[cur_shoff+0x2F], buffer[cur_shoff+0x2E],
-                buffer[cur_shoff+0x2D], buffer[cur_shoff+0x2C]);
-        cur_sectionHeader.sh_addralign = (
-            MAKE_LP1(buffer[cur_shoff+0x37], buffer[cur_shoff+0x36],
-                buffer[cur_shoff+0x35], buffer[cur_shoff+0x34]) << 32)
-                    | (MAKE_LONG(buffer[cur_shoff+0x33], buffer[cur_shoff+0x32],
-                        buffer[cur_shoff+0x31], buffer[cur_shoff+0x30]));
-        cur_sectionHeader.sh_entsize = (
-            MAKE_LP1(buffer[cur_shoff+0x3F], buffer[cur_shoff+0x3E],
-                buffer[cur_shoff+0x3D], buffer[cur_shoff+0x3C]) << 32)
-                    | (MAKE_LONG(buffer[cur_shoff+0x3B], buffer[cur_shoff+0x3A],
-                        buffer[cur_shoff+0x39], buffer[cur_shoff+0x38]));
+        cur_sectionHeader.sh_name =         *(uint32_t*)&buffer[cur_shoff+0x00];
+        cur_sectionHeader.sh_type =         *(uint32_t*)&buffer[cur_shoff+0x04];
+        cur_sectionHeader.sh_flags =        *(uint64_t*)&buffer[cur_shoff+0x08];
+        cur_sectionHeader.sh_address =      *(uint64_t*)&buffer[cur_shoff+0x10];
+        cur_sectionHeader.sh_offset =       *(uint64_t*)&buffer[cur_shoff+0x18];
+        cur_sectionHeader.sh_size =         *(uint64_t*)&buffer[cur_shoff+0x20];
+        cur_sectionHeader.sh_link =         *(uint32_t*)&buffer[cur_shoff+0x28];
+        cur_sectionHeader.sh_info =         *(uint32_t*)&buffer[cur_shoff+0x2C];
+        cur_sectionHeader.sh_addralign =    *(uint64_t*)&buffer[cur_shoff+0x30];
+        cur_sectionHeader.sh_entsize =      *(uint64_t*)&buffer[cur_shoff+0x38];
 
         memcpy(&sectionHeaders[i], &cur_sectionHeader,
             elfHeader64.e_shentsize);

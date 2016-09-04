@@ -11,107 +11,108 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
 
 struct ELF_Header_32
 {
-    unsigned char ei_mag[4]; // = { 0x7F, 0x45, 0x4C, 0x46 };
-    unsigned char ei_class;
-    unsigned char ei_data;
-    unsigned char ei_version;
-    unsigned char ei_osabi;
-    unsigned char ei_abiversion;
-    unsigned char ei_pad[7];
-    unsigned short e_type;
-    unsigned short e_machine;
-    unsigned int e_version;
-    unsigned int e_entry;
-    unsigned int e_phoff;
-    unsigned int e_shoff;
-    unsigned int e_flags;
-    unsigned short e_ehsize;
-    unsigned short e_phentsize;
-    unsigned short e_phnum;
-    unsigned short e_shentsize;
-    unsigned short e_shnum;
-    unsigned short e_shstrndx;
+    uint8_t ei_mag[4]; // = { 0x7F, 0x45, 0x4C, 0x46 };
+    uint8_t ei_class;
+    uint8_t ei_data;
+    uint8_t ei_version;
+    uint8_t ei_osabi;
+    uint8_t ei_abiversion;
+    uint8_t ei_pad[7];
+    uint16_t e_type;
+    uint16_t e_machine;
+    uint32_t e_version;
+    uint32_t e_entry;
+    uint32_t e_phoff;
+    uint32_t e_shoff;
+    uint32_t e_flags;
+    uint16_t e_ehsize;
+    uint16_t e_phentsize;
+    uint16_t e_phnum;
+    uint16_t e_shentsize;
+    uint16_t e_shnum;
+    uint16_t e_shstrndx;
 };
 
 struct ELF_Header_64
 {
-    unsigned char ei_mag[4]; // = { 0x7F, 0x45, 0x4C, 0x46 };
-    unsigned char ei_class;
-    unsigned char ei_data;
-    unsigned char ei_version;
-    unsigned char ei_osabi;
-    unsigned char ei_abiversion;
-    unsigned char ei_pad[7];
-    unsigned short e_type;
-    unsigned short e_machine;
-    unsigned int e_version;
-    unsigned long long e_entry;
-    unsigned long long e_phoff;
-    unsigned long long e_shoff;
-    unsigned int e_flags;
-    unsigned short e_ehsize;
-    unsigned short e_phentsize;
-    unsigned short e_phnum;
-    unsigned short e_shentsize;
-    unsigned short e_shnum;
-    unsigned short e_shstrndx;
+    uint8_t ei_mag[4]; // = { 0x7F, 0x45, 0x4C, 0x46 };
+    uint8_t ei_class;
+    uint8_t ei_data;
+    uint8_t ei_version;
+    uint8_t ei_osabi;
+    uint8_t ei_abiversion;
+    uint8_t ei_pad[7];
+    uint16_t e_type;
+    uint16_t e_machine;
+    uint32_t e_version;
+    uint64_t e_entry;
+    uint64_t e_phoff;
+    uint64_t e_shoff;
+    uint32_t e_flags;
+    uint16_t e_ehsize;
+    uint16_t e_phentsize;
+    uint16_t e_phnum;
+    uint16_t e_shentsize;
+    uint16_t e_shnum;
+    uint16_t e_shstrndx;
 };
 
 struct Program_Header_32
 {
-    unsigned int p_type;
-    unsigned int p_offset;
-    unsigned int p_vaddr;
-    unsigned int p_paddr;
-    unsigned int p_filesz;
-    unsigned int p_memsz;
-    unsigned int p_flags;
-    unsigned int p_align;
+    uint32_t p_type;
+    uint32_t p_offset;
+    uint32_t p_vaddr;
+    uint32_t p_paddr;
+    uint32_t p_filesz;
+    uint32_t p_memsz;
+    uint32_t p_flags;
+    uint32_t p_align;
 };
 
 // Reference: http://wiki.osdev.org/ELF
 struct Program_Header_64
 {
-    unsigned int p_type;
-    unsigned int p_flags;
-    unsigned long long p_offset;
-    unsigned long long p_vaddr;
-    unsigned long long p_paddr;
-    unsigned long long p_filesz;
-    unsigned long long p_memsz;
-    unsigned long long p_align;
+    uint32_t p_type;
+    uint32_t p_flags;
+    uint64_t p_offset;
+    uint64_t p_vaddr;
+    uint64_t p_paddr;
+    uint64_t p_filesz;
+    uint64_t p_memsz;
+    uint64_t p_align;
 };
 
 struct Section_Header_32
 {
-    unsigned int sh_name;
-    unsigned int sh_type;
-    unsigned int sh_flags;
-    unsigned int sh_address;
-    unsigned int sh_offset;
-    unsigned int sh_size;
-    unsigned int sh_link;
-    unsigned int sh_info;
-    unsigned int sh_addralign;
-    unsigned int sh_entsize;
+    uint32_t sh_name;
+    uint32_t sh_type;
+    uint32_t sh_flags;
+    uint32_t sh_address;
+    uint32_t sh_offset;
+    uint32_t sh_size;
+    uint32_t sh_link;
+    uint32_t sh_info;
+    uint32_t sh_addralign;
+    uint32_t sh_entsize;
 };
 
 // TODO: I have no reference, I deduced this, may be incorrect.
 struct Section_Header_64
 {
-  unsigned int sh_name;
-  unsigned int sh_type;
-  unsigned long long sh_flags;
-  unsigned long long sh_address;
-  unsigned long long sh_offset;
-  unsigned long long sh_size;
-  unsigned int sh_link;
-  unsigned int sh_info;
-  unsigned long long sh_addralign;
-  unsigned long long sh_entsize;
+  uint32_t sh_name;
+  uint32_t sh_type;
+  uint64_t sh_flags;
+  uint64_t sh_address;
+  uint64_t sh_offset;
+  uint64_t sh_size;
+  uint32_t sh_link;
+  uint32_t sh_info;
+  uint64_t sh_addralign;
+  uint64_t sh_entsize;
 };
 
 void printElfHeader32(struct ELF_Header_32 header);

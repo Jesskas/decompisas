@@ -13,7 +13,11 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
 
     while (prgmCounter < 60 && byteCounter < codeSize) {
         printf("%s:0x%08X\t", name, byteCounter + RVA);
-        if (parsePrefix(code[byteCounter])) byteCounter++;
+        int prefixBytes = parsePrefix(code[byteCounter]);
+        if (prefixBytes) {
+            byteCounter += prefixBytes;
+            prgmCounter++;
+        }
 
         // Single-byte opcode
         if (code[byteCounter] != 0x0F) {
@@ -117,48 +121,70 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
     printf("\n");
 }
 
+// return the number of bytes handled.
 int parsePrefix(unsigned char byte){
+    int numOfBytesHandled = 0;
     switch (byte) {
         case 0xF0: // LOCK
-            printf("(lock) ");
+            numOfBytesHandled++;
+            printf("[Unhandled Prefix 'Lock']");
             break;
         case 0xF2: // REPNE/REPNZ
-            printf("(repne/repnz) ");
+            numOfBytesHandled++;
+            printf("[Unhandled Prefix 'Repn{e,z}']");
             break;
         case 0xF3: // REP or REPE/REPZ
-            printf("(rep/repe/repz) ");
+            numOfBytesHandled++;
+            printf("[Unhandled Prefix 'Rep{,e,z}']");
+            /*
+            Some of what I've seen;
+            F3 A6 = repe cmpsb
+
+            */
             break;
+
+        //
+        // TODO: unhanded prefixes.
+        // will cause disassemby failures.
+        //
         case 0x2D:
+            numOfBytesHandled++;
             printf("(CS segment override) ");
             break;
         case 0x36:
+            numOfBytesHandled++;
             printf("(SS segment override) ");
             break;
         case 0x3E:
+            numOfBytesHandled++;
             printf("(DS segment override/mandatory) ");
             break;
         case 0x26:
+            numOfBytesHandled++;
             printf("(ES segment override) ");
             break;
         case 0x64:
+            numOfBytesHandled++;
             printf("(FS segment override) ");
             break;
         case 0x65:
+            numOfBytesHandled++;
             printf("(GS segment override) ");
             break;
         case 0x2E:
-            printf("(branch not taken/mandatory) ");
+            numOfBytesHandled++;
+            printf("[Unhandled branch not taken/mandatory) ");
             break;
         //case 0x3E:
         //    break;
         case 0x66:
-            printf("(manatory) ");
+            numOfBytesHandled++;
+            printf("[Unhanded Prefix 'Mandatory']");
             break;
-
         case 0x67:
-            printf("(0x67 prefix something) ");
+            numOfBytesHandled++;
+            printf("[Unhandled Prefix 0x67]");
             break;
-
         default:
             return 0;
     }
@@ -228,7 +254,7 @@ void printInstruction(struct Instruction instr, int debug)
     }
 
     // TODO: Print instruction prefix
-    unsigned int i = 0;
+    int i = 0;
     switch (instr.opcode) {
         case 0x33:
             printf("xor\t\t");
