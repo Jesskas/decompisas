@@ -22,12 +22,14 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
         // Single-byte opcode
         if (code[byteCounter] != 0x0F) {
             struct Instruction instr = { 0 };
-            instr.byteCounter = byteCounter;
-            instr.prgmCounter = prgmCounter;
-            instr.opcode = code[byteCounter];
+            instr.byteCounter =         byteCounter;
+            instr.prgmCounter =         prgmCounter;
+            instr.opcode =              code[byteCounter];
+            instr.instructionBytes[0] = code[byteCounter];
             switch (code[byteCounter]) {
                 case 0x33:
                     instr.modRegRm  = code[byteCounter+1];
+                    instr.instructionBytes[1] = code[byteCounter+1];
                     byteCounter += 2; break;
                 // Push Opcodes
                 case 0x50:
@@ -51,21 +53,30 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                 // Others
                 case 0x68:
                     instr.imm_32 =          *(uint32_t*)&code[byteCounter+1];
+                    instr.instructionBytes[1] = code[byteCounter+1];
                     byteCounter += 5; break;
                 case 0x83:
                     instr.modRegRm  = code[byteCounter+1];
+                    instr.instructionBytes[1] = code[byteCounter+1];
                     instr.imm_8     = code[byteCounter+2];
+                    instr.instructionBytes[2] = code[byteCounter+2];
                     byteCounter += 3; break;
                 case 0x8B:
                     instr.modRegRm  = code[byteCounter+1];
+                    instr.instructionBytes[1] = code[byteCounter+1];
                     if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) {
                         if ((instr.modRegRm & INDIR_ADDR8) == INDIR_ADDR8)
                         {
                             instr.disp_8 = code[byteCounter+2];
+                            instr.instructionBytes[2] = code[byteCounter+2];
                             byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
-                            instr.disp_32 = *(uint32_t*)&code[byteCounter+2]);
+                            instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
+                            instr.instructionBytes[2] = code[byteCounter+2];
+                            instr.instructionBytes[3] = code[byteCounter+3];
+                            instr.instructionBytes[4] = code[byteCounter+4];
+                            instr.instructionBytes[5] = code[byteCounter+5];
                             byteCounter++;
                         }
                     }
@@ -81,6 +92,7 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                 case 0xB6:
                 case 0xB7:
                     instr.imm_8 =   code[byteCounter+1];
+                    instr.instructionBytes[1] = code[byteCounter+1];
                     byteCounter += 2; break;
                 case 0xB8:
                 case 0xB9:
@@ -90,7 +102,11 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                 case 0xBD:
                 case 0xBE:
                 case 0xBF:
-                    instr.imm_32 =  *(uint32_t*)&code[byteCounter+1]);
+                    instr.imm_32 =  *(uint32_t*)&code[byteCounter+1];
+                    instr.instructionBytes[1] = code[byteCounter+1];
+                    instr.instructionBytes[2] = code[byteCounter+2];
+                    instr.instructionBytes[3] = code[byteCounter+3];
+                    instr.instructionBytes[4] = code[byteCounter+4];
                     byteCounter += 5; break;
                 case 0xC3:
                     byteCounter++; break;
@@ -98,7 +114,11 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                     byteCounter++; break;
                 case 0xE8:
                     // TODO: Evaluate accuracy of relative offsets.
-                    instr.rel_32 =  *(uint32_t*)&code[byteCounter+1]);
+                    instr.rel_32 =  *(uint32_t*)&code[byteCounter+1];
+                    instr.instructionBytes[1] = code[byteCounter+1];
+                    instr.instructionBytes[2] = code[byteCounter+2];
+                    instr.instructionBytes[3] = code[byteCounter+3];
+                    instr.instructionBytes[4] = code[byteCounter+4];
                     byteCounter += 5; break;
                 default:
                     byteCounter++; break;
@@ -191,55 +211,10 @@ void printInstruction(struct Instruction instr, int debug)
     if (debug) {
         unsigned int bytesPrinted = 0;
         unsigned int i;
-        for (i = 0; instr.instructionPrefix[i]; i++) {
-            printf("%02X ", instr.instructionPrefix[i]);
-            bytesPrinted++;
-        }
-        printf("%02X ", instr.opcode); bytesPrinted++;
-        if (instr.opcode2) {
-            printf("%02X ", instr.opcode2);
-            bytesPrinted++;
-        }
-        if (instr.modRegRm) {
-            printf("%02X ", instr.modRegRm);
-            bytesPrinted++;
-        }
-        if (instr.scaleIndexBase) {
-            printf("%02X ", instr.scaleIndexBase);
-            bytesPrinted++;
-        }
-        if (instr.imm_8) {
-            printf("%02X ", instr.imm_8); bytesPrinted++;
-        }
-        if (instr.imm_32) {
-            printf("%02X ", (uint8_t)(instr.imm_32));
-            printf("%02X ", (uint8_t)(instr.imm_32 >> 8));
-            printf("%02X ", (uint8_t)(instr.imm_32 >> 16));
-            printf("%02X ", (uint8_t)(instr.imm_32 >> 24));
 
-            bytesPrinted += 4;
-        }
-        if (instr.rel_8) {
-            printf("%02X ", instr.rel_8); bytesPrinted++;
-        }
-        if (instr.rel_32) {
-            printf("%02X ", (uint8_t)(instr.rel_32));
-            printf("%02X ", (uint8_t)(instr.rel_32 >> 8));
-            printf("%02X ", (uint8_t)(instr.rel_32 >> 16));
-            printf("%02X ", (uint8_t)(instr.rel_32 >> 24));
-
-            bytesPrinted += 4;
-        }
-        if (instr.disp_8) {
-            printf("%02X ", instr.disp_8); bytesPrinted++;
-        }
-        if (instr.disp_32) {
-            printf("%02X ", (uint8_t)(instr.disp_32));
-            printf("%02X ", (uint8_t)(instr.disp_32 >> 8));
-            printf("%02X ", (uint8_t)(instr.disp_32 >> 16));
-            printf("%02X ", (uint8_t)(instr.disp_32 >> 24));
-
-            bytesPrinted += 4;
+        for (i = 0; instr.instructionBytes[i]; i++) {
+            printf("%02X ", instr.instructionBytes[i]);
+            bytesPrinted++;
         }
 
         for (i = 0; i < 6 - bytesPrinted; i++)

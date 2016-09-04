@@ -24,6 +24,7 @@ extern const char* reglist[8];
 struct Instruction {
     uint32_t byteCounter;
     uint32_t prgmCounter;
+    uint8_t instructionBytes[64]; // 64 is overkill, but that allows worst cases
 
     uint8_t instructionPrefix[4]; // 1-4 byte instruction prefix
     uint8_t opcode;
