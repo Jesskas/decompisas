@@ -148,8 +148,8 @@ int parsePrefix(uint8_t byte){
         case 0xF3: // REP or REPE/REPZ
             numOfBytesHandled++;
             printf("[Unhandled Prefix 'Rep{,e,z}']");
-            struct Instruction instr = { 0 };
-            instr.instructionPrefix[0] = byte;
+            //struct Instruction instr = { 0 };
+            //instr.instructionPrefix[0] = byte;
             /*
             Some of what I've seen;
             F3 A6 = repe cmpsb
