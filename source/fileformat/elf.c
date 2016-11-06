@@ -201,6 +201,20 @@ void parseElf32(FILE* fp, long fileSize)
       sizeof(char)*shstrtab_size);
     fread(shstrtab, sizeof(char), shstrtab_size, fp);
 
+
+    // Printing!
+    printSectionHeader32(sectionHeaders[1], shstrtab);
+    unsigned char* codeSection = malloc(sectionHeaders[1].sh_size);
+    fseek(fp, sectionHeaders[1].sh_offset, SEEK_SET); // TODO: Error checking
+    fread(codeSection, sizeof(unsigned char), sectionHeaders[1].sh_size, fp);
+    disassemble_ARM(&shstrtab[sectionHeaders[1].sh_name],
+        sectionHeaders[1].sh_address,
+        codeSection,
+        sectionHeaders[1].sh_size);
+    free(codeSection);
+    /* arbitrary separator here */
+
+
     // cleanup
     free(programHeaders);
     free(sectionHeaders);
