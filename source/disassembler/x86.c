@@ -3,8 +3,8 @@
 // define extern declaration
 const char* reglist[8] =
     { "eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi" };
-const char* reglist8l[8] =
-    { "al", "cl", "dl", "bl", "sp", "bp", "si", "di" };
+const char* reglist8l[8] = // TODO: Confirm the latter four
+    { "al", "cl", "dl", "bl", "ah", "ch", "dh", "bh" };
 const char* reglist8h[8] = // TODO: Confirm the lattter four
     { "ah", "ch", "dh", "bh", "esp", "ebp", "esi", "edi" };
 const char* reglist16[8] = // TODO: Confirm the lattter four
@@ -24,6 +24,13 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
             byteCounter += prefixBytes;
             prgmCounter++;
         }
+        struct Instruction instr = { 0 };
+        instr.byteCounter =         byteCounter;
+        instr.prgmCounter =         prgmCounter;
+        instr.relativeOff =         byteCounter + RVA;
+        instr.opcode =              code[byteCounter];
+        instr.instructionBytes[0] = code[byteCounter];
+        //instr.numInstrBytes      += prefixBytes;      // Still unhandled...
 
 // examples of two=byte opcodes, saved for later
 //0f b6 00                movzx  eax,BYTE PTR [eax]
@@ -38,12 +45,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
 
         // Single-byte opcode
         if (code[byteCounter] != 0x0F) {
-            struct Instruction instr = { 0 };
-            instr.byteCounter =         byteCounter;
-            instr.prgmCounter =         prgmCounter;
-            instr.relativeOff =         byteCounter + RVA;
-            instr.opcode =              code[byteCounter];
-            instr.instructionBytes[0] = code[byteCounter];
             switch (code[byteCounter]) {
                 // ADD Opcodes (0b0000 0000)
                 case 0x00: // add r/m8 r8
@@ -619,6 +620,8 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                     instr.instructionBytes[4] = code[byteCounter+4];
                     instr.numInstrBytes += 5;   byteCounter += 5; break;
                 case 0x2F:
+                    // TODO: Review
+                    instr.numInstrBytes++;      byteCounter++; break;
                 // XOR Opcodes (0b0011 0000)
                 case 0x30:
                     instr.modRegRm            = code[byteCounter+1];
@@ -868,12 +871,89 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                     // 69  62  36  34 2f 6c 64    imul   esp,DWORD PTR [rdx+0x36],0x646c2f34
                     // 69  09      00 00 02 00    imul   ecx,DWORD PTR [rcx],0x20000
                     instr.modRegRm            = code[byteCounter+1];
-                    // TODO: under some condition here, by modRegRm, add SIB...
                     instr.instructionBytes[1] = code[byteCounter+1];
-                    instr.instructionBytes[2] = code[byteCounter+2];
-                    instr.instructionBytes[3] = code[byteCounter+3];
-                    instr.instructionBytes[4] = code[byteCounter+4];
-                    instr.numInstrBytes += 5;   byteCounter += 5; // or six?
+                    if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) {
+                        if ((instr.modRegRm & INDIR_ADDR) == INDIR_ADDR) // 00
+                        {
+                            if ((instr.modRegRm & 0x7) == 0x7) { // 0b100
+                                instr.scaleIndexBase = code[byteCounter+2];
+                                instr.instructionBytes[2] = code[byteCounter+2];
+
+                                instr.imm_32 = *(uint32_t*)&code[byteCounter+3];
+                                instr.instructionBytes[3] = code[byteCounter+3];
+                                instr.instructionBytes[4] = code[byteCounter+4];
+                                instr.instructionBytes[5] = code[byteCounter+5];
+                                instr.instructionBytes[6] = code[byteCounter+6];
+
+                                instr.numInstrBytes += 6;    byteCounter += 6;
+                            }
+                            // Note: there is a special case for 0b101 missing
+                        }
+                        if ((instr.modRegRm & INDIR_ADDR8) == INDIR_ADDR8) // 01
+                        {
+                            if ((instr.modRegRm & 0x7) == 0x7) { // 0b100
+                                instr.scaleIndexBase      = code[byteCounter+2];
+                                instr.instructionBytes[2] = code[byteCounter+2];
+                                instr.disp_8              = code[byteCounter+3];
+                                instr.instructionBytes[3] = code[byteCounter+3];
+
+                                instr.imm_32 = *(uint32_t*)&code[byteCounter+4];
+                                instr.instructionBytes[4] = code[byteCounter+4];
+                                instr.instructionBytes[5] = code[byteCounter+5];
+                                instr.instructionBytes[6] = code[byteCounter+6];
+                                instr.instructionBytes[7] = code[byteCounter+7];
+
+                                instr.numInstrBytes += 6;   byteCounter += 6;
+                            } else {
+                                instr.disp_8              = code[byteCounter+2];
+                                instr.instructionBytes[2] = code[byteCounter+2];
+
+                                instr.imm_32 = *(uint32_t*)&code[byteCounter+3];
+                                instr.instructionBytes[3] = code[byteCounter+3];
+                                instr.instructionBytes[4] = code[byteCounter+4];
+                                instr.instructionBytes[5] = code[byteCounter+5];
+                                instr.instructionBytes[6] = code[byteCounter+6];
+
+                                instr.numInstrBytes += 5;   byteCounter += 5;
+                            }
+
+                        }
+                        if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32)//10
+                        {
+                            if ((instr.modRegRm & 0x7) == 0x7) { // 0b100
+                                instr.scaleIndexBase  = code[byteCounter+2];
+                                instr.instructionBytes[2] = code[byteCounter+2];
+                                instr.disp_32 =*(uint32_t*)&code[byteCounter+3];
+                                instr.instructionBytes[3] = code[byteCounter+3];
+                                instr.instructionBytes[4] = code[byteCounter+4];
+                                instr.instructionBytes[5] = code[byteCounter+5];
+                                instr.instructionBytes[6] = code[byteCounter+6];
+
+                                instr.imm_32 = *(uint32_t*)&code[byteCounter+7];
+                                instr.instructionBytes[7] = code[byteCounter+7];
+                                instr.instructionBytes[8] = code[byteCounter+8];
+                                instr.instructionBytes[9] = code[byteCounter+9];
+                                instr.instructionBytes[10]=code[byteCounter+10];
+
+                                instr.numInstrBytes += 9;   byteCounter += 9;
+                            } else {
+                                instr.disp_32 =*(uint32_t*)&code[byteCounter+2];
+                                instr.instructionBytes[2] = code[byteCounter+2];
+                                instr.instructionBytes[3] = code[byteCounter+3];
+                                instr.instructionBytes[4] = code[byteCounter+4];
+                                instr.instructionBytes[5] = code[byteCounter+5];
+
+                                instr.imm_32 = *(uint32_t*)&code[byteCounter+6];
+                                instr.instructionBytes[6] = code[byteCounter+6];
+                                instr.instructionBytes[7] = code[byteCounter+7];
+                                instr.instructionBytes[8] = code[byteCounter+8];
+                                instr.instructionBytes[9] = code[byteCounter+9];
+
+                                instr.numInstrBytes += 8;   byteCounter += 8;
+                            }
+                        }
+                    }
+                    instr.numInstrBytes += 2;   byteCounter += 2; break;
                     break;
                 case 0x6A:    // PUSH imm8
                     instr.imm_8               = code[byteCounter+1];
@@ -881,6 +961,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                 case 0x6B:    // IMUL r16/32 r/m16/32 imm8
                     break;
                 case 0x6C:    // INS(B) m8 (DX)
+                    // TODO: Review
+                    instr.numInstrBytes++;      byteCounter++; break;
+                    break;
                 case 0x6D:
                 case 0x6E:
                 case 0x6F:
@@ -1349,7 +1432,7 @@ int parsePrefix(uint8_t byte){
             return 0;
     }
 
-    return 1;
+    return numOfBytesHandled;
 }
 
 void printInstruction(struct Instruction instr, int debug)
@@ -1371,6 +1454,85 @@ void printInstruction(struct Instruction instr, int debug)
     // TODO: Print instruction prefix
     int i = 0;
     switch (instr.opcode) {
+        case 0x00:
+            printf("add\t");
+            printf("byte ptr ");
+            for (i = 7; i >= 0; i--) {
+                if ((instr.modRegRm & 0x7) == i) {
+                    printf("[%s]", reglist[i]);
+                    break;
+                }
+            }
+            for (i = 7; i >= 0; i--) {
+                if (((instr.modRegRm & 0x38) >> 3) == i) {
+                    printf(", %s", reglist8l[i]);
+                    break;
+                }
+            }
+            break;
+        case 0x01:
+            printf("add\t");
+            printf("dword ptr ");
+            for (i = 7; i >= 0; i--) {
+                if ((instr.modRegRm & 0x7) == i) {
+                    printf("[%s]", reglist[i]);
+                    break;
+                }
+            }
+            for (i = 7; i >= 0; i--) {
+                if (((instr.modRegRm & 0x38) >> 3) == i) {
+                    printf(", %s", reglist[i]);
+                    break;
+                }
+            }
+            break;
+        case 0x02:
+
+            break;
+        case 0x03:
+
+            break;
+        case 0x04:
+            printf("add\t");
+            for (i = 7; i >= 0; i--) {
+                if ((instr.modRegRm & 0x7) == i) {
+                    printf("%s, ", reglist8l[i]);
+                    break;
+                }
+            }
+            printf("0x%X", instr.imm_8);
+            break;
+        // ...
+        case 0x10:
+            printf("adc\t");
+            printf("byte ptr ");
+            for (i = 7; i >= 0; i--) {
+                if ((instr.modRegRm & 0x7) == i) {
+                    printf("[%s]", reglist[i]);
+                    break;
+                }
+            }
+            for (i = 7; i >= 0; i--) {
+                if (((instr.modRegRm & 0x38) >> 3) == i) {
+                    printf(", %s", reglist8l[i]);
+                    break;
+                }
+            }
+            break;
+        case 0x14:
+            printf("adc\t");
+            for (i = 7; i >= 0; i--) {
+                if ((instr.modRegRm & 0x7) == i) {
+                    printf("%s, ", reglist8l[i]);
+                    break;
+                }
+            }
+            printf("0x%X", instr.imm_8);
+            break;
+        case 0x2F:
+            // TODO: Review
+            printf("das\t");
+            break;
         case 0x30: // r/m8, r8
             printf("xor\t");
             if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
@@ -1610,9 +1772,50 @@ void printInstruction(struct Instruction instr, int debug)
             printf("push\t");
             printf("0x%X", instr.imm_32);
             break;
+        case 0x69:
+            printf("imul\t");
+            for (i = 7; i >= 0; i--) { // & 0b00111000
+                if (((instr.modRegRm & 0x38) >> 3) == i) {
+                    printf("%s, ", reglist8l[i]);
+                    break;
+                }
+            }
+
+            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
+                printf("dword ptr ");
+            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
+            for (i = 7; i >= 0; i--) { // & 0b00000111
+                if (((instr.modRegRm & 0x7)) == i) {
+                    printf("%s", reglist[i]);
+                    break;
+                }
+            }
+            if (instr.disp_8) {
+                if (instr.disp_8 & 0x80) // negative
+                    printf("-0x%X", (int8_t)(-instr.disp_8));
+                else
+                    printf("+0x%X", instr.disp_8);
+            }
+            if (instr.disp_32) {
+                if (instr.disp_32 & 0x8000) // negative
+                    printf("-0x%X", (int32_t)(-instr.disp_32));
+                else
+                    printf("+0x%X", instr.disp_32);
+            }
+            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
+            printf(",0x%X", instr.imm_32);
+            break;
         case 0x6A:
             printf("push\t");
             printf("0x%X", instr.imm_8);
+            break;
+
+        case 0x6C:
+            // TODO: Review
+            // INS[B] 	m8 	DX
+            // "Input from Port to String"
+            printf("ins\t");
+            printf("byte ptr es:[edi],dx");
             break;
 
         // Varying J Opcodes (0b0111 0000), all are [j* rel8]

@@ -122,3 +122,8 @@ void printSectionHeader32(struct Section_Header_32 header,
     char* shstrtab);
 void printSectionHeader64(struct Section_Header_64 header,
     char* shstrtab);
+
+// const char* elfSectionHeader32Name(struct ELF_Header_32 header,
+//     char* shstrtab);
+// const char* elfSectionHeader64Name(struct ELF_Header_64 header,
+//     char* shstrtab);

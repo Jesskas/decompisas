@@ -9,7 +9,7 @@ void parseElf(FILE* fp, long fileSize) {
     fread(buffer, sizeof(unsigned char), 0x05, fp);
 
     if (buffer[4] == 1) {
-        printf("Determined 32-bit.\n");
+        printf("Determined 32-bit.\n\n");
         if (fseek(fp, 0l, SEEK_SET) != 0) {
             printf("[ELF] Error seeking back to zero (parse).\n");
         }
@@ -200,6 +200,36 @@ void parseElf32(FILE* fp, long fileSize)
     char* shstrtab = (char*)malloc(
       sizeof(char)*shstrtab_size);
     fread(shstrtab, sizeof(char), shstrtab_size, fp);
+
+    // Printing!
+    unsigned char* codeSection = malloc(sectionHeaders[1].sh_size);
+    fseek(fp, sectionHeaders[1].sh_offset, SEEK_SET); // TODO: Error checking
+    fread(codeSection, sizeof(unsigned char), sectionHeaders[1].sh_size, fp);
+    disassemble_x86(&shstrtab[sectionHeaders[1].sh_name],
+        sectionHeaders[1].sh_address,
+        codeSection,
+        sectionHeaders[1].sh_size);
+    free(codeSection);
+    /* arbitrary separator here */
+    codeSection = malloc(sectionHeaders[2].sh_size);
+    fseek(fp, sectionHeaders[2].sh_offset, SEEK_SET); // TODO: Error checking
+    fread(codeSection, sizeof(unsigned char), sectionHeaders[2].sh_size, fp);
+    disassemble_x86(&shstrtab[sectionHeaders[2].sh_name],
+        sectionHeaders[2].sh_address,
+        codeSection,
+        sectionHeaders[2].sh_size);
+    free(codeSection);
+    /* arbitrary separator here */
+    printSectionHeader32(sectionHeaders[3], shstrtab);
+    codeSection = malloc(sectionHeaders[3].sh_size);
+    fseek(fp, sectionHeaders[3].sh_offset, SEEK_SET); // TODO: Error checking
+    fread(codeSection, sizeof(unsigned char), sectionHeaders[3].sh_size, fp);
+    disassemble_x86(&shstrtab[sectionHeaders[3].sh_name],
+        sectionHeaders[3].sh_address,
+        codeSection,
+        sectionHeaders[3].sh_size);
+    free(codeSection);
+
 
     // cleanup
     free(programHeaders);

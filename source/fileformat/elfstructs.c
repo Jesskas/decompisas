@@ -160,3 +160,16 @@ void printSectionHeader64(struct Section_Header_64 header,
         header.sh_offset, header.sh_size, header.sh_link, header.sh_info,
         header.sh_addralign, header.sh_entsize);
 }
+
+// const char* elfSectionHeader32Name(struct ELF_Header_32 header,
+//     char* shstrtab)
+// {
+//  
+// }
+//
+//
+// const char* elfSectionHeader64Name(struct ELF_Header_64 header,
+//     char* shstrtab)
+// {
+//
+// }
