@@ -1,10 +1,4 @@
-// Rudimentary Reader for Compiled Files!
-// argv[1] == filename
-// argv[2] == what to do?
-// - argv[2] == "-print" is print hex and ascii side-by-side
-// - argv[2] == "-parse" is print hex and ascii side-by-side
-// argv[3] == debug? "-d"
-// I'm probably going to regret this troll commit later ayy
+// Rudimentary Reader for Compiled Files! And soon binary files!
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,6 +10,20 @@ void printHexWithAscii(FILE* fp, long fileSize, unsigned int width);
 void parse(FILE* fp, long fileSize);
 
 int main(int argc, char* argv[]) {
+
+    // TODO: More advanced settings
+    if (!argv[1] || !argv[2]) {
+        printf("Usage:\n");
+        printf("decopmisas [file] [action]\n");
+        printf("[action] can be either --print, or --parse\n");
+        return 0;
+    }
+    if (strcmp(argv[2], "--print") && strcmp(argv[2], "--parse")) {
+        printf("Invalid [action].\n");
+        printf("Only supported options so far are --parse and --print.\n");
+        return 0;
+    }
+
     FILE* fp = fopen(argv[1], "rb");
     if (fp == NULL) {
         printf("File not found.\n");
@@ -32,9 +40,9 @@ int main(int argc, char* argv[]) {
 
     if (argv[2]) {
         unsigned int width = 16; // TODO: Parameterize this
-        if (!strcmp(argv[2], "-print")) {
+        if (!strcmp(argv[2], "--print")) {
             printHexWithAscii(fp, fileSize, width);
-        } else if (!strcmp(argv[2], "-parse")) {
+        } else if (!strcmp(argv[2], "--parse")) {
             parse(fp, fileSize);
         }
     }
