@@ -56,6 +56,7 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
 // debug = print the bytes as well
 void printInstruction(struct Instruction instr, int debug);
 
-int parsePrefix(unsigned char byte);
+// return an array of prefix bytes for the opcode, up to 4
+uint8_t parsePrefix(const unsigned char* code, unsigned int byteCounter);
 
 #endif
