@@ -27,7 +27,7 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
         while (prefixByte != 0) {
             instr.instructionBytes[i]   = prefixByte;
             instr.instructionPrefix[i]  = prefixByte;
-            byteCounter++; i++;
+            i++; byteCounter++;
             if (i == 4) break; // TODO: better error handling
             prefixByte = parsePrefix(code, byteCounter);
         }
@@ -94,7 +94,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             if ((instr.modRegRm & 0b00000111) == 0b100) { // 0b100
                                 instr.scaleIndexBase = code[byteCounter+2];
                                 instr.instructionBytes[i++] = code[byteCounter+2];
-                                instr.numInstrBytes++;    byteCounter++;
                             }
                             // Note: there is a special case for 0b101 missing
                         }
@@ -719,7 +718,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -1117,6 +1115,7 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             if ((instr.modRegRm & 0b00000111) == 0b100) { // 0b100
                                 instr.scaleIndexBase = code[byteCounter+2];
                                 instr.instructionBytes[i++] = code[byteCounter+2];
+
                             }
                             // Note: there is a special case for 0b101 missing
                         }
@@ -1220,6 +1219,7 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                 case 0xAB:
                 case 0xAC:
                 case 0xAD:
+                    break;
                 case 0xAE:
                     break;
                 case 0xAF:
@@ -1304,6 +1304,10 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
                     break;
+                case 0xE3:
+                    instr.rel_8               = code[byteCounter+1];
+                    instr.instructionBytes[i++] = code[byteCounter+1];
+                    break;
                 case 0xE8: // CALL rel16/32
                     instr.rel_32 =  *(uint32_t*)&code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -1342,7 +1346,8 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                     break;
             }
             instr.numInstrBytes = i;
-            byteCounter += i;
+            //printf("[%X+=%d]",RVA+byteCounter,i);
+            byteCounter = oldByteCounter + i;
 
             // TODO: Review. This seems to be what objdump does.
             // Otherwise, I seem to disassemble garbage data
@@ -1401,6 +1406,7 @@ void printInstruction(struct Instruction instr, int debug)
     if (debug) {
         unsigned int bytesPrinted = 0;
         unsigned int i;
+        //printf("{%d}", instr.numInstrBytes);
 
         for (i = 0; i < instr.numInstrBytes; i++) {
             printf("%02X ", instr.instructionBytes[i]);
@@ -1451,6 +1457,7 @@ void printInstruction(struct Instruction instr, int debug)
         case 0x00:
             printf("add\t");
             printf("byte ptr ");
+            printf("[");
             if (instr.scaleIndexBase) {
                 // TODO: False assumptions to remove later:
                 // - the Index part of SIB is assumed to be a register
@@ -2448,7 +2455,12 @@ void printInstruction(struct Instruction instr, int debug)
                     else
                         printf("+0x%X", instr.disp_8);
                 }
-                if (instr.disp_32)  printf("+0x%X", instr.disp_32);
+                if (instr.disp_32) {
+                    if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
+                        printf("-0x%X", -instr.disp_32);
+                    else
+                        printf("+0x%X", instr.disp_32);
+                }
             } else {
                 for (i = 7; i >= 0; i--) { // & 0b00000111
                     if (((instr.modRegRm & 0b00000111) & i) == i) {
@@ -2462,7 +2474,12 @@ void printInstruction(struct Instruction instr, int debug)
                     else
                         printf("+0x%X", instr.disp_8);
                 }
-                if (instr.disp_32)  printf("+0x%X", instr.disp_32);
+                if (instr.disp_32) {
+                    if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
+                        printf("-0x%X", -instr.disp_32);
+                    else
+                        printf("+0x%X", instr.disp_32);
+                }
             }
             printf("]");
             break;
@@ -2476,7 +2493,16 @@ void printInstruction(struct Instruction instr, int debug)
             printf("ds:"); // TODO: I can't confirm the meaning of this
             printf("0x%X", instr.disp_32);
             break;
-
+        case 0xAD:
+            // NOTE: processor specific instruction. see:
+            // http://ref.x86asm.net/#column_proc
+            // Because is is 03+ (this is 32-bit x86/80386), use lods[d]
+            // lods eax, m16/32
+            printf("lods\t");
+            printf("eax, ");
+            printf("dword ptr ");
+            printf("ds:[esi]");
+            break;
         case 0xAE:
             printf("scas\t");
             printf("al, ");
@@ -2596,11 +2622,20 @@ void printInstruction(struct Instruction instr, int debug)
                     break;
             }
             break;
+        case 0xE3:
+            printf("jecxz\t");
+            if (instr.rel_8 & 0b10000000)
+                printf("0x%X",
+                    instr.numInstrBytes + instr.relativeOff + (int8_t)instr.rel_8);
+            else
+                printf("0x%X",
+                    instr.numInstrBytes + instr.relativeOff + instr.rel_8);
+
+            break;
         case 0xE8:
             printf("call\t");
-            uint32_t calculatedRelative =
-                instr.rel_32 + instr.numInstrBytes + instr.relativeOff;
-            printf("0x%X", calculatedRelative);
+            printf("0x%X",
+                instr.rel_32 + instr.numInstrBytes + instr.relativeOff);
             break;
         case 0xEE:
             // TODO: Review.

@@ -220,7 +220,6 @@ void parseElf32(FILE* fp, long fileSize)
         sectionHeaders[2].sh_size);
     free(codeSection);
     /* arbitrary separator here */
-    printSectionHeader32(sectionHeaders[3], shstrtab);
     codeSection = malloc(sectionHeaders[3].sh_size);
     fseek(fp, sectionHeaders[3].sh_offset, SEEK_SET); // TODO: Error checking
     fread(codeSection, sizeof(unsigned char), sectionHeaders[3].sh_size, fp);
@@ -229,7 +228,42 @@ void parseElf32(FILE* fp, long fileSize)
         codeSection,
         sectionHeaders[3].sh_size);
     free(codeSection);
-
+    /* arbitrary separator here */
+    codeSection = malloc(sectionHeaders[4].sh_size);
+    fseek(fp, sectionHeaders[4].sh_offset, SEEK_SET); // TODO: Error checking
+    fread(codeSection, sizeof(unsigned char), sectionHeaders[4].sh_size, fp);
+    disassemble_x86(&shstrtab[sectionHeaders[4].sh_name],
+        sectionHeaders[4].sh_address,
+        codeSection,
+        sectionHeaders[4].sh_size);
+    free(codeSection);
+    /* arbitrary separator here */
+    codeSection = malloc(sectionHeaders[5].sh_size);
+    fseek(fp, sectionHeaders[5].sh_offset, SEEK_SET); // TODO: Error checking
+    fread(codeSection, sizeof(unsigned char), sectionHeaders[5].sh_size, fp);
+    disassemble_x86(&shstrtab[sectionHeaders[5].sh_name],
+        sectionHeaders[5].sh_address,
+        codeSection,
+        sectionHeaders[5].sh_size);
+    free(codeSection);
+    //
+    codeSection = malloc(sectionHeaders[6].sh_size);
+    fseek(fp, sectionHeaders[6].sh_offset, SEEK_SET); // TODO: Error checking
+    fread(codeSection, sizeof(unsigned char), sectionHeaders[6].sh_size, fp);
+    disassemble_x86(&shstrtab[sectionHeaders[6].sh_name],
+        sectionHeaders[6].sh_address,
+        codeSection,
+        sectionHeaders[6].sh_size);
+    free(codeSection);
+    //
+    codeSection = malloc(sectionHeaders[7].sh_size);
+    fseek(fp, sectionHeaders[7].sh_offset, SEEK_SET); // TODO: Error checking
+    fread(codeSection, sizeof(unsigned char), sectionHeaders[7].sh_size, fp);
+    disassemble_x86(&shstrtab[sectionHeaders[7].sh_name],
+        sectionHeaders[7].sh_address,
+        codeSection,
+        sectionHeaders[7].sh_size);
+    free(codeSection);
 
     // cleanup
     free(programHeaders);
