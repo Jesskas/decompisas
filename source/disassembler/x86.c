@@ -19,6 +19,7 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
 
     while (prgmCounter < 200 && byteCounter < codeSize) {
         printf("%s:0x%08X | ", name, byteCounter + RVA);
+        uint32_t oldByteCounter = byteCounter;
         int i = 0;  // for now... represents number of bytes in instruction
         struct Instruction instr = { 0 };
 
@@ -57,22 +58,48 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
                     if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) {
-                        if ((instr.modRegRm & INDIR_ADDR8) == INDIR_ADDR8)
+                        if ((instr.modRegRm & INDIR_ADDR8) == INDIR_ADDR8) // 01
                         {
-                            instr.disp_8 = code[byteCounter+2];
-                            instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
+                            if ((instr.modRegRm & 0b00000111) == 0b100) { // 0b100
+                                instr.scaleIndexBase      = code[byteCounter+2];
+                                instr.instructionBytes[i++] = code[byteCounter+2];
+                                instr.disp_8              = code[byteCounter+3];
+                                instr.instructionBytes[i++] = code[byteCounter+3];
+                            } else {
+                                instr.disp_8              = code[byteCounter+2];
+                                instr.instructionBytes[i++] = code[byteCounter+2];
+                            }
                         }
-                        if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
-                            instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
-                            instr.instructionBytes[i++] = code[byteCounter+2];
-                            instr.instructionBytes[i++] = code[byteCounter+3];
-                            instr.instructionBytes[i++] = code[byteCounter+4];
-                            instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
+                        else if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32)//10
+                        {
+                            if ((instr.modRegRm & 0b00000111) == 0b100) { // 0b100
+
+                                instr.scaleIndexBase  = code[byteCounter+2];
+                                instr.instructionBytes[i++] = code[byteCounter+2];
+                                instr.disp_32 =*(uint32_t*)&code[byteCounter+3];
+                                instr.instructionBytes[i++] = code[byteCounter+3];
+                                instr.instructionBytes[i++] = code[byteCounter+4];
+                                instr.instructionBytes[i++] = code[byteCounter+5];
+                                instr.instructionBytes[i++] = code[byteCounter+6];
+                            } else {
+                                instr.disp_32 =*(uint32_t*)&code[byteCounter+2];
+                                instr.instructionBytes[i++] = code[byteCounter+2];
+                                instr.instructionBytes[i++] = code[byteCounter+3];
+                                instr.instructionBytes[i++] = code[byteCounter+4];
+                                instr.instructionBytes[i++] = code[byteCounter+5];
+                            }
+                        }
+                        else // ((instr.modRegRm & INDIR_ADDR) == INDIR_ADDR) // 00
+                        {
+                            if ((instr.modRegRm & 0b00000111) == 0b100) { // 0b100
+                                instr.scaleIndexBase = code[byteCounter+2];
+                                instr.instructionBytes[i++] = code[byteCounter+2];
+                                instr.numInstrBytes++;    byteCounter++;
+                            }
+                            // Note: there is a special case for 0b101 missing
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                     // 00 03 = add BYTE PTR [rbx],al
                 case 0x01: // add r/m16/32 r16/32
                     // 01 00 = add DWORD PTR [rax],eax
@@ -83,7 +110,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -91,10 +117,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x02: // add r8 r/m8
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -103,7 +128,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -111,10 +135,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x03: // add r16/32 r/m16/32
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -123,7 +146,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -131,24 +153,23 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x04:
                     instr.imm_8               = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
-                    byteCounter += 2; break;
+                    break;
                 case 0x05:
                     instr.imm_32 = *(uint32_t*)&code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+2];
                     instr.instructionBytes[i++] = code[byteCounter+3];
                     instr.instructionBytes[i++] = code[byteCounter+4];
-                    byteCounter += 5; break;
+                    break;
                 case 0x06: // push es
                 case 0x07: // pop es
-                    byteCounter++; break;
+                    break;
                 // OR Opcodes (0b0000 1000)
                 case 0x08:
                     instr.modRegRm            = code[byteCounter+1];
@@ -158,7 +179,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -166,10 +186,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x09:
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -178,7 +197,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -186,10 +204,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x0A:
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -198,7 +215,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -206,10 +222,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x0B:
                     // 0B 00 = or eax,DWORD PTR [rax]
                     instr.modRegRm            = code[byteCounter+1];
@@ -219,7 +234,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -227,23 +241,22 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x0C:
                     instr.imm_8               = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
-                    byteCounter += 2; break;
+                    break;
                 case 0x0D:
                     instr.imm_32 = *(uint32_t*)&code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+2];
                     instr.instructionBytes[i++] = code[byteCounter+3];
                     instr.instructionBytes[i++] = code[byteCounter+4];
-                    byteCounter += 5; break;
+                    break;
                 case 0x0E: // PUSH CS
-                    byteCounter++; break;
+                    break;
                 // ADC Opcodes (0b0001 0000)
                 case 0x10:
                     // 10 60 00 = adc BYTE PTR [ra]
@@ -255,7 +268,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -263,10 +275,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x11:
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -275,7 +286,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -283,10 +293,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x12:
                     // 12 00 = adc al,BYTE PTR [rax]
                     instr.modRegRm            = code[byteCounter+1];
@@ -296,7 +305,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -304,10 +312,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x13:
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -316,7 +323,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -324,24 +330,23 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x14:
                     instr.imm_8               = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
-                    byteCounter += 2; break;
+                    break;
                 case 0x15:
                     instr.imm_32 = *(uint32_t*)&code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+2];
                     instr.instructionBytes[i++] = code[byteCounter+3];
                     instr.instructionBytes[i++] = code[byteCounter+4];
-                    byteCounter += 5; break;
+                    break;
                 case 0x16:
                 case 0x17:
-                    byteCounter++; break;
+                    break;
                 // SBB Opcodes (0b0001 1000)
                 case 0x18:
                     // 18 10 = sbb BYTE PTR [rax],dl
@@ -352,7 +357,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -360,10 +364,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x19:
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -372,7 +375,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -380,10 +382,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x1A:
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -392,7 +393,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -400,10 +400,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x1B:
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -412,7 +411,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -420,24 +418,23 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x1C:
                     instr.imm_8               = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
-                    byteCounter += 2; break;
+                    break;
                 case 0x1D:
                     instr.imm_32 = *(uint32_t*)&code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+2];
                     instr.instructionBytes[i++] = code[byteCounter+3];
                     instr.instructionBytes[i++] = code[byteCounter+4];
-                    byteCounter += 5; break;
+                    break;
                 case 0x1E: // PUSH DS
                 case 0x1F: // POP DS
-                    byteCounter++; break;
+                    break;
                 // AND Opcodes (0b0010 0000)
                 case 0x20:
                     instr.modRegRm            = code[byteCounter+1];
@@ -447,7 +444,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -455,10 +451,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x21:
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -467,7 +462,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -475,10 +469,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x22:
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -487,7 +480,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -495,10 +487,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x23:
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -507,7 +498,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -515,21 +505,20 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x24:
                     instr.imm_8               = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
-                    byteCounter += 2; break;
+                    break;
                 case 0x25:
                     instr.imm_32 = *(uint32_t*)&code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+2];
                     instr.instructionBytes[i++] = code[byteCounter+3];
                     instr.instructionBytes[i++] = code[byteCounter+4];
-                    byteCounter += 5; break;
+                    break;
                 case 0x27: // DAA AL
                 // SUB Opcodes (0b0010 1000)
                 case 0x28:
@@ -540,7 +529,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -548,10 +536,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x29:
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -560,7 +547,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -568,10 +554,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x2A:
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -580,7 +565,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -588,10 +572,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x2B:
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -600,7 +583,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -608,24 +590,23 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x2C:
                     instr.imm_8               = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
-                    byteCounter += 2; break;
+                    break;
                 case 0x2D:
                     instr.imm_32 = *(uint32_t*)&code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+2];
                     instr.instructionBytes[i++] = code[byteCounter+3];
                     instr.instructionBytes[i++] = code[byteCounter+4];
-                    byteCounter += 5; break;
+                    break;
                 case 0x2F:
                     // TODO: Review
-                    byteCounter++; break;
+                    break;
                 // XOR Opcodes (0b0011 0000)
                 case 0x30:
                     instr.modRegRm            = code[byteCounter+1];
@@ -635,7 +616,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -643,10 +623,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x31:
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -655,7 +634,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -663,10 +641,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x32:
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -675,7 +652,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -683,10 +659,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x33:
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -695,7 +670,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -703,21 +677,20 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x34:
                     instr.imm_8               = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
-                    byteCounter += 2; break;
+                    break;
                 case 0x35:
                     instr.imm_32 = *(uint32_t*)&code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+2];
                     instr.instructionBytes[i++] = code[byteCounter+3];
                     instr.instructionBytes[i++] = code[byteCounter+4];
-                    byteCounter += 5; break;
+                    break;
                 case 0x37: // AAA AL AH
                 // CMP Opcodes (0b0011 1000)
                 case 0x38:
@@ -728,7 +701,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -736,10 +708,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x39:
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -756,10 +727,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x3A:
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -768,7 +738,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -776,10 +745,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x3B:
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -788,7 +756,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -796,23 +763,22 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x3C:
                     instr.imm_8               = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
-                    byteCounter += 2; break;
+                    break;
                 case 0x3D:
                     instr.imm_32 = *(uint32_t*)&code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+2];
                     instr.instructionBytes[i++] = code[byteCounter+3];
                     instr.instructionBytes[i++] = code[byteCounter+4];
-                    byteCounter += 5; break;
+                    break;
                 case 0x3F: // AAS AL AH
-                    byteCounter++; break;
+                    break;
                 // INC Opcodes (0b0100 0000), skip through
                 case 0x40:
                 case 0x41:
@@ -822,7 +788,7 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                 case 0x45:
                 case 0x46:
                 case 0x47:
-                    byteCounter++; break;
+                    break;
                 // DEC Opcodes (0b0100 1000), skip through
                 case 0x48:
                 case 0x49:
@@ -832,7 +798,7 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                 case 0x4D:
                 case 0x4E:
                 case 0x4F:
-                    byteCounter++; break;
+                    break;
                 // Push Opcodes (0b0101 0000), skip through
                 case 0x50:
                 case 0x51:
@@ -842,7 +808,7 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                 case 0x55:
                 case 0x56:
                 case 0x57:
-                    byteCounter++; break;
+                    break;
                 // Pop Opcodes (0b0101 1000), skip through
                 case 0x58:
                 case 0x59:
@@ -852,7 +818,7 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                 case 0x5D:
                 case 0x5E:
                 case 0x5F:
-                    byteCounter++; break;
+                    break;
                 // ?? (0b0110 0000)
                 case 0x60: // pusha ax cx dx  |  pushad eax ecx edx
                 case 0x61: // popa di si bp   |  popad edi esi ebp
@@ -870,7 +836,7 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                     instr.instructionBytes[i++] = code[byteCounter+2];
                     instr.instructionBytes[i++] = code[byteCounter+3];
                     instr.instructionBytes[i++] = code[byteCounter+4];
-                    byteCounter += 5; break;
+                    break;
                 case 0x69:  // IMUL r16/32 r/m16/32 imm16/32
                     // 69  62  36  34 2f 6c 64    imul   esp,DWORD PTR [rdx+0x36],0x646c2f34
                     // 69  09      00 00 02 00    imul   ecx,DWORD PTR [rcx],0x20000
@@ -879,7 +845,7 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                     if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) {
                         if ((instr.modRegRm & INDIR_ADDR) == INDIR_ADDR) // 00
                         {
-                            if ((instr.modRegRm & 0b00000111) == 0x7) { // 0b100
+                            if ((instr.modRegRm & 0b00000111) == 0b100) { // 0b100
                                 instr.scaleIndexBase = code[byteCounter+2];
                                 instr.instructionBytes[i++] = code[byteCounter+2];
 
@@ -888,14 +854,12 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                                 instr.instructionBytes[i++] = code[byteCounter+4];
                                 instr.instructionBytes[i++] = code[byteCounter+5];
                                 instr.instructionBytes[i++] = code[byteCounter+6];
-
-                                byteCounter += 6;
                             }
                             // Note: there is a special case for 0b101 missing
                         }
                         if ((instr.modRegRm & INDIR_ADDR8) == INDIR_ADDR8) // 01
                         {
-                            if ((instr.modRegRm & 0b00000111) == 0x7) { // 0b100
+                            if ((instr.modRegRm & 0b00000111) == 0b100) { // 0b100
                                 instr.scaleIndexBase      = code[byteCounter+2];
                                 instr.instructionBytes[i++] = code[byteCounter+2];
                                 instr.disp_8              = code[byteCounter+3];
@@ -906,8 +870,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                                 instr.instructionBytes[i++] = code[byteCounter+5];
                                 instr.instructionBytes[i++] = code[byteCounter+6];
                                 instr.instructionBytes[i++] = code[byteCounter+7];
-
-                                byteCounter += 6;
                             } else {
                                 instr.disp_8              = code[byteCounter+2];
                                 instr.instructionBytes[i++] = code[byteCounter+2];
@@ -917,14 +879,11 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                                 instr.instructionBytes[i++] = code[byteCounter+4];
                                 instr.instructionBytes[i++] = code[byteCounter+5];
                                 instr.instructionBytes[i++] = code[byteCounter+6];
-
-                                byteCounter += 5;
                             }
-
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32)//10
                         {
-                            if ((instr.modRegRm & 0b00000111) == 0x7) { // 0b100
+                            if ((instr.modRegRm & 0b00000111) == 0b100) { // 0b100
                                 instr.scaleIndexBase  = code[byteCounter+2];
                                 instr.instructionBytes[i++] = code[byteCounter+2];
                                 instr.disp_32 =*(uint32_t*)&code[byteCounter+3];
@@ -938,8 +897,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                                 instr.instructionBytes[i++] = code[byteCounter+8];
                                 instr.instructionBytes[i++] = code[byteCounter+9];
                                 instr.instructionBytes[i++]=code[byteCounter+10];
-
-                                byteCounter += 9;
                             } else {
                                 instr.disp_32 =*(uint32_t*)&code[byteCounter+2];
                                 instr.instructionBytes[i++] = code[byteCounter+2];
@@ -952,26 +909,22 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                                 instr.instructionBytes[i++] = code[byteCounter+7];
                                 instr.instructionBytes[i++] = code[byteCounter+8];
                                 instr.instructionBytes[i++] = code[byteCounter+9];
-
-                                byteCounter += 8;
                             }
                         }
                     }
-                    byteCounter += 2; break;
                     break;
                 case 0x6A:    // PUSH imm8
                     instr.imm_8               = code[byteCounter+1];
-                    byteCounter += 2; break;
+                    break;
                 case 0x6B:    // IMUL r16/32 r/m16/32 imm8
                     break;
                 case 0x6C:    // INS(B) m8 (DX)
                     // TODO: Review
-                    byteCounter++; break;
                     break;
                 case 0x6D:
                 case 0x6E:
                 case 0x6F:
-                    byteCounter++; break;
+                    break;
                 // Varying J Opcodes (0b0111 0000), all [j* rel8], skip through
                 case 0x70:  // JO
                 case 0x71:  // JNO
@@ -991,13 +944,13 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                 case 0x7F:  // JNLE / JG
                     instr.rel_8               = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
-                    byteCounter += 2; break;
+                    break;
                 // (0b1000 0000)
                 // the exact operation depends on the opcode extension 0-7
                 case 0x80: // * r/m8 imm8
                 case 0x81: // * r/m16/32 imm16/32
                 case 0x82: // * r/m8 imm8
-                    byteCounter++; break;
+                    break;
                 case 0x83: // * r/m16/32 imm8
                     // 83 ec 3c                sub    esp,0x3c
                     // 83 e0 01                and    eax,0x1
@@ -1012,7 +965,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
 
                             instr.imm_8               = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+3];
-                            byteCounter += 2;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -1023,28 +975,24 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
 
                             instr.imm_8               = code[byteCounter+6];
                             instr.instructionBytes[i++] = code[byteCounter+6];
-
-                            byteCounter += 5;
                         }
                     } else {
                         instr.imm_8               = code[byteCounter+2];
                         instr.instructionBytes[i++] = code[byteCounter+2];
-                        instr.numInstrBytes ++;      byteCounter ++;
                     }
-
-                    byteCounter += 2; break;
+                    break;
                 case 0x84:    // TEST r/m8 r8
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
-                    byteCounter += 2; break;
+                    break;
                 case 0x85:    // TEST r/m16/32 r16/32
                     // 85 C0 = test eax, eax
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
-                    byteCounter += 2; break;
+                    break;
                 case 0x86:    // XCHG r/m8 r8
                 case 0x87:    // XCHG r/m16/32 r16/32
-                    byteCounter++; break;
+                    break;
                 // (0b1000 1000)
                 case 0x88:    // MOV r/m8 r8
                     instr.modRegRm            = code[byteCounter+1];
@@ -1054,7 +1002,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -1062,10 +1009,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x89:    // MOV r/m16/32 r16/32
                     // 89 e5                   mov    ebp,esp
                     // 89 c2                   mov    edx,eax
@@ -1077,7 +1023,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -1085,12 +1030,11 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x8A:    // MOV r8 r/m8
-                    byteCounter++; break;
+                    break;
                 case 0x8B:
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -1099,7 +1043,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                         {
                             instr.disp_8 = code[byteCounter+2];
                             instr.instructionBytes[i++] = code[byteCounter+2];
-                            byteCounter++;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -1107,10 +1050,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+3];
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
-                            byteCounter += 4;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0x8C:
                 case 0x8D:
                     // 8d b4 26 00 00 00 00    lea    esi,[esi+eiz*1+0x0]
@@ -1124,31 +1066,28 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                     if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) {
                         if ((instr.modRegRm & INDIR_ADDR) == INDIR_ADDR) // 00
                         {
-                            if ((instr.modRegRm & 0b00000111) == 0x7) { // 0b100
+                            if ((instr.modRegRm & 0b00000111) == 0b100) { // 0b100
                                 instr.scaleIndexBase = code[byteCounter+2];
                                 instr.instructionBytes[i++] = code[byteCounter+2];
-                                instr.numInstrBytes++;    byteCounter++;
                             }
                             // Note: there is a special case for 0b101 missing
                         }
                         if ((instr.modRegRm & INDIR_ADDR8) == INDIR_ADDR8) // 01
                         {
-                            if ((instr.modRegRm & 0b00000111) == 0x7) { // 0b100
+                            if ((instr.modRegRm & 0b00000111) == 0b100) { // 0b100
                                 instr.scaleIndexBase      = code[byteCounter+2];
                                 instr.instructionBytes[i++] = code[byteCounter+2];
                                 instr.disp_8              = code[byteCounter+3];
                                 instr.instructionBytes[i++] = code[byteCounter+3];
-                                byteCounter += 2;
                             } else {
                                 instr.disp_8              = code[byteCounter+2];
                                 instr.instructionBytes[i++] = code[byteCounter+2];
-                                byteCounter++;
                             }
 
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32)//10
                         {
-                            if ((instr.modRegRm & 0b00000111) == 0x7) { // 0b100
+                            if ((instr.modRegRm & 0b00000111) == 0b100) { // 0b100
                                 instr.scaleIndexBase  = code[byteCounter+2];
                                 instr.instructionBytes[i++] = code[byteCounter+2];
                                 instr.disp_32 =*(uint32_t*)&code[byteCounter+3];
@@ -1156,27 +1095,68 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                                 instr.instructionBytes[i++] = code[byteCounter+4];
                                 instr.instructionBytes[i++] = code[byteCounter+5];
                                 instr.instructionBytes[i++] = code[byteCounter+6];
-                                byteCounter += 5;
                             } else {
                                 instr.disp_32 =*(uint32_t*)&code[byteCounter+2];
                                 instr.instructionBytes[i++] = code[byteCounter+2];
                                 instr.instructionBytes[i++] = code[byteCounter+3];
                                 instr.instructionBytes[i++] = code[byteCounter+4];
                                 instr.instructionBytes[i++] = code[byteCounter+5];
-                                byteCounter += 4;
                             }
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
+
                 case 0x8E: // mov Sreg r/m16
-
-
+                    // 8E BD 8E 00 2D 9E = mov ? word ptr [ebp-0x61D2FF72]
+                    // TODO: Review. objdump uses '?' for register?
+                    instr.modRegRm            = code[byteCounter+1];
+                    instr.instructionBytes[i++] = code[byteCounter+1];
+                    if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) {
+                        if ((instr.modRegRm & INDIR_ADDR) == INDIR_ADDR) // 00
+                        {
+                            if ((instr.modRegRm & 0b00000111) == 0b100) { // 0b100
+                                instr.scaleIndexBase = code[byteCounter+2];
+                                instr.instructionBytes[i++] = code[byteCounter+2];
+                            }
+                            // Note: there is a special case for 0b101 missing
+                        }
+                        if ((instr.modRegRm & INDIR_ADDR8) == INDIR_ADDR8) // 01
+                        {
+                            if ((instr.modRegRm & 0b00000111) == 0b100) { // 0b100
+                                instr.scaleIndexBase      = code[byteCounter+2];
+                                instr.instructionBytes[i++] = code[byteCounter+2];
+                                instr.disp_8              = code[byteCounter+3];
+                                instr.instructionBytes[i++] = code[byteCounter+3];
+                            } else {
+                                instr.disp_8              = code[byteCounter+2];
+                                instr.instructionBytes[i++] = code[byteCounter+2];
+                            }
+                        }
+                        if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32)//10
+                        {
+                            if ((instr.modRegRm & 0b00000111) == 0b100) { // 0b100
+                                instr.scaleIndexBase  = code[byteCounter+2];
+                                instr.instructionBytes[i++] = code[byteCounter+2];
+                                instr.disp_32 =*(uint32_t*)&code[byteCounter+3];
+                                instr.instructionBytes[i++] = code[byteCounter+3];
+                                instr.instructionBytes[i++] = code[byteCounter+4];
+                                instr.instructionBytes[i++] = code[byteCounter+5];
+                                instr.instructionBytes[i++] = code[byteCounter+6];
+                            } else {
+                                instr.disp_32 =*(uint32_t*)&code[byteCounter+2];
+                                instr.instructionBytes[i++] = code[byteCounter+2];
+                                instr.instructionBytes[i++] = code[byteCounter+3];
+                                instr.instructionBytes[i++] = code[byteCounter+4];
+                                instr.instructionBytes[i++] = code[byteCounter+5];
+                            }
+                        }
+                    }
                     break;
                 case 0x8F: // pop r/m16/32
                 //
                 // 0x90 after an F3 prefix = "pause" opcode
                 case 0x90: // nop
-                    byteCounter++; break;
+                    break;
                 // 90+r - xchg r16/32 eax
                 // case 0x90:
                 // case 0x91:
@@ -1199,7 +1179,7 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                 case 0xA0:
                     instr.disp_8              = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
-                    byteCounter += 2; break;
+                    break;
                 case 0xA1:
                     // a1 20 30 41 00 = mov eax, ds:0x413020
                     instr.disp_32 = *(uint32_t*)&code[byteCounter+1];
@@ -1207,12 +1187,11 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                     instr.instructionBytes[i++] = code[byteCounter+2];
                     instr.instructionBytes[i++] = code[byteCounter+3];
                     instr.instructionBytes[i++] = code[byteCounter+4];
-                    byteCounter += 5; break;
                     break;
                 case 0xA2:
                     instr.disp_8              = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
-                    byteCounter += 2; break;
+                    break;
                 case 0xA3:
                     // a3 44 d0 40 00          mov    ds:0x40d044,eax
                     instr.disp_32 = *(uint32_t*)&code[byteCounter+1];
@@ -1220,31 +1199,31 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                     instr.instructionBytes[i++] = code[byteCounter+2];
                     instr.instructionBytes[i++] = code[byteCounter+3];
                     instr.instructionBytes[i++] = code[byteCounter+4];
-                    byteCounter += 5; break;
+                    break;
                 case 0xA4:
                 case 0xA5:
                 case 0xA6:
                 case 0xA7:
-                    byteCounter++; break;
+                    break;
                 case 0xA8:
                     instr.disp_8              = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
-                    byteCounter += 2; break;
+                    break;
                 case 0xA9:
                     instr.disp_32 = *(uint32_t*)&code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+2];
                     instr.instructionBytes[i++] = code[byteCounter+3];
                     instr.instructionBytes[i++] = code[byteCounter+4];
-                    byteCounter += 5; break;
+                    break;
                 case 0xAA:
                 case 0xAB:
                 case 0xAC:
                 case 0xAD:
                 case 0xAE:
-                    byteCounter++; break;
+                    break;
                 case 0xAF:
-                    byteCounter++; break;
+                    break;
                 // Mov Opcodes (0-7:r8,imm8  -  8-F:r16/32,imm16/32)
                 case 0xB0:
                 case 0xB1:
@@ -1256,7 +1235,7 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                 case 0xB7:
                     instr.imm_8 =   code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
-                    byteCounter += 2; break;
+                    break;
                 case 0xB8:
                 case 0xB9:
                 case 0xBA:
@@ -1270,21 +1249,19 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                     instr.instructionBytes[i++] = code[byteCounter+2];
                     instr.instructionBytes[i++] = code[byteCounter+3];
                     instr.instructionBytes[i++] = code[byteCounter+4];
-                    byteCounter += 5; break;
-
+                    break;
                 case 0xC0:
                 case 0xC1:
                     // c1 e2 03                shl    edx,0x3
                     // c1 e0 03                shl    eax,0x3
-                    byteCounter++; break;
+                    break;
                 case 0xC2: // retn imm16
                     // C2 04 00 = ret 0x4
                     instr.imm_16 =  *(uint16_t*)&code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+2];
-                    byteCounter += 3;
                 case 0xC3: // retn
-                    byteCounter++; break;
+                    break;
                 case 0xC7: // mov r/m16/32
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
@@ -1299,7 +1276,6 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+4];
                             instr.instructionBytes[i++] = code[byteCounter+5];
                             instr.instructionBytes[i++] = code[byteCounter+6];
-                            byteCounter += 5;
                         }
                         if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
                             instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
@@ -1313,25 +1289,27 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                             instr.instructionBytes[i++] = code[byteCounter+7];
                             instr.instructionBytes[i++] = code[byteCounter+8];
                             instr.instructionBytes[i++] = code[byteCounter+9];
-                            byteCounter += 8;
                         }
                     }
-                    byteCounter += 2; break;
+                    break;
                 case 0xC9: // leave
-                    byteCounter++; break;
+                    break;
                 case 0xCC: // int 0x3? int3?
-                    byteCounter++; break;
-                case 0xDB: // Incomplete, likely the wrong method of handling
+                    break;
+                case 0xD0:
+                    instr.modRegRm =    code[byteCounter+1];
+                    instr.instructionBytes[i++] = code[byteCounter+1];
+                    break;
+                case 0xDB: // TODO: Incomplete, likely wrong method of handling
                     instr.modRegRm            = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
-                    byteCounter += 2; break;
+                    break;
                 case 0xE8: // CALL rel16/32
                     instr.rel_32 =  *(uint32_t*)&code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+2];
                     instr.instructionBytes[i++] = code[byteCounter+3];
                     instr.instructionBytes[i++] = code[byteCounter+4];
-                    byteCounter += 5;
                     break;
                 case 0xE9: // JMP rel16/32
                     // TODO: Evaluate accuracy of relative offsets.
@@ -1340,31 +1318,39 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                     instr.instructionBytes[i++] = code[byteCounter+2];
                     instr.instructionBytes[i++] = code[byteCounter+3];
                     instr.instructionBytes[i++] = code[byteCounter+4];
-                    byteCounter += 5; break;
+                    break;
                 case 0xEA:
                     // JMPF	ptr16:16/32 (not implemented)
-                    byteCounter++; break;
+                    break;
                 case 0xEB:
                     // 402382:       eb 12                   jmp    402396 <_printInstruction+0x516>
                     // 402390:       eb 04                   jmp    402396 <_printInstruction+0x516>
                     instr.rel_8               = code[byteCounter+1];
                     instr.instructionBytes[i++] = code[byteCounter+1];
-                    byteCounter += 2; break;
+                    break;
                 case 0xEC:
-                    byteCounter++; break;
+                    break;
                 case 0xED:
-                    byteCounter++; break;
+                    break;
                 case 0xEE:
-                    byteCounter++; break;
+                    break;
                 case 0xEF:
-                    byteCounter++; break;
+                    break;
                 case 0xF3:
                     // f3 ab                   rep stos DWORD PTR es:[edi],eax
                 default:
-                    byteCounter++; break;
+                    break;
             }
             instr.numInstrBytes = i;
-            printInstruction(instr, 1);
+            byteCounter += i;
+
+            // TODO: Review. This seems to be what objdump does.
+            // Otherwise, I seem to disassemble garbage data
+            if ((oldByteCounter + RVA + instr.numInstrBytes) <= (RVA + codeSize))
+                printInstruction(instr, 1);
+            else
+
+                printf("...");
         }
 
         printf("\n");
@@ -1465,12 +1451,78 @@ void printInstruction(struct Instruction instr, int debug)
         case 0x00:
             printf("add\t");
             printf("byte ptr ");
-            for (i = 7; i >= 0; i--) {
-                if ((instr.modRegRm & 0b00000111) == i) {
-                    printf("[%s]", reglist[i]);
-                    break;
+            if (instr.scaleIndexBase) {
+                // TODO: False assumptions to remove later:
+                // - the Index part of SIB is assumed to be a register
+                for (i = 7; i >= 0; i--) { // & 0b00000111
+                    if (((instr.modRegRm & 0b00000111)) == i) {
+                        printf("%s+", reglist[i]);
+                        break;
+                    }
                 }
+                switch ((instr.scaleIndexBase & 0b11000000) >> 6) { // 0b11000000
+                    case 0x01: // 0b01
+                        printf("(");
+                        for (i = 7; i >= 0; i--) { // & 0b00111000
+                            if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                                printf("%s", reglist[i]);
+                                break;
+                            }
+                        }
+                        printf("*2)");
+                        break;
+                    case 0x02: // 0b10
+                        printf("(");
+                        for (i = 7; i >= 0; i--) { // & 0b00111000
+                            if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                                printf("%s", reglist[i]);
+                                break;
+                            }
+                        }
+                        printf("*4)");
+                        break;
+                    case 0x03: // 0b11
+                        printf("(");
+                        for (i = 7; i >= 0; i--) { // & 0b00111000
+                            if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                                printf("%s", reglist[i]);
+                                break;
+                            }
+                        }
+                        printf("*8)");
+                        break;
+                    default:
+                        for (i = 7; i >= 0; i--) { // & 0b00111000
+                            if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                                printf("%s", reglist[i]);
+                                break;
+                            }
+                        }
+                        break;
+                }
+                if (instr.disp_8) {
+                    if (instr.disp_8 & 0b10000000) // negative
+                        printf("-0x%X", -instr.disp_8);
+                    else
+                        printf("+0x%X", instr.disp_8);
+                }
+                if (instr.disp_32)  printf("+0x%X", instr.disp_32);
+            } else {
+                for (i = 7; i >= 0; i--) { // & 0b00000111
+                    if (((instr.modRegRm & 0b00000111) & i) == i) {
+                        printf("%s", reglist[i]);
+                        break;
+                    }
+                }
+                if (instr.disp_8) {
+                    if (instr.disp_8 & 0b10000000) // negative
+                        printf("-0x%X", -instr.disp_8);
+                    else
+                        printf("+0x%X", instr.disp_8);
+                }
+                if (instr.disp_32)  printf("+0x%X", instr.disp_32);
             }
+            printf("]");
             for (i = 7; i >= 0; i--) {
                 if (((instr.modRegRm & 0b00111000) >> 3) == i) {
                     printf(", %s", reglist8l[i]);
@@ -1537,6 +1589,10 @@ void printInstruction(struct Instruction instr, int debug)
             printf("0x%X", instr.imm_32);
             break;
         // ...
+        case 0x0E:
+            printf("push\t");
+            printf("cs");
+            break;
         case 0x10:
             printf("adc\t");
             printf("byte ptr ");
@@ -1549,6 +1605,22 @@ void printInstruction(struct Instruction instr, int debug)
             for (i = 7; i >= 0; i--) {
                 if (((instr.modRegRm & 0b00111000) >> 3) == i) {
                     printf(", %s", reglist8l[i]);
+                    break;
+                }
+            }
+            break;
+        case 0x11:
+            printf("adc\t");
+            printf("dword ptr ");
+            for (i = 7; i >= 0; i--) {
+                if ((instr.modRegRm & 0b00000111) == i) {
+                    printf("[%s]", reglist[i]);
+                    break;
+                }
+            }
+            for (i = 7; i >= 0; i--) {
+                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                    printf(", %s", reglist[i]);
                     break;
                 }
             }
@@ -1569,15 +1641,39 @@ void printInstruction(struct Instruction instr, int debug)
                 }
             }
             break;
-        case 0x14:
+        case 0x13:
             printf("adc\t");
             for (i = 7; i >= 0; i--) {
-                if ((instr.modRegRm & 0b00000111) == i) {
-                    printf("%s, ", reglist8l[i]);
+                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                    printf("%s, ", reglist[i]);
                     break;
                 }
             }
+            printf("dword ptr ");
+            for (i = 7; i >= 0; i--) {
+                if ((instr.modRegRm & 0b00000111) == i) {
+                    printf("[%s]", reglist[i]);
+                    break;
+                }
+            }
+            break;
+        case 0x14:
+            printf("adc\t");
+            printf("al, ");
             printf("0x%X", instr.imm_8);
+            break;
+        case 0x15:
+            printf("adc\t");
+            printf("eax, ");
+            printf("0x%X", instr.imm_32);
+            break;
+        case 0x16:
+            printf("push\t");
+            printf("ss");
+            break;
+        case 0x17:
+            printf("pop\t");
+            printf("ss");
             break;
         case 0x1A:
             printf("sbb\t");
@@ -1595,6 +1691,14 @@ void printInstruction(struct Instruction instr, int debug)
                 }
               }
             break;
+        case 0x1E:
+            printf("push\t");
+            printf("ds");
+            break;
+        case 0x1F:
+            printf("pop\t");
+            printf("ds");
+            break;
         case 0x20:
             printf("and\t");
             printf("byte ptr ");
@@ -1611,9 +1715,21 @@ void printInstruction(struct Instruction instr, int debug)
                 }
             }
             break;
+        case 0x26:
+            printf("es\t");
+            printf("es");
+            break;
+        case 0x27:
+            printf("daa\t");
+            printf("al");
+            break;
+        case 0x2E:
+            printf("cs\t");
+            printf("cs");
+            break;
         case 0x2F:
-            // TODO: Review
             printf("das\t");
+            // TODO: Review. printf("al");
             break;
         case 0x30: // r/m8, r8
             printf("xor\t");
@@ -1690,7 +1806,7 @@ void printInstruction(struct Instruction instr, int debug)
             if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
             for (i = 7; i >= 0; i--) {
                 if ((instr.modRegRm & 0b00000111) == i) {
-                    printf("%s", reglist8l[i]);
+                    printf("%s", reglist[i]);
                     break;
                 }
             }
@@ -1749,7 +1865,15 @@ void printInstruction(struct Instruction instr, int debug)
             printf("eax, ");
             printf("0x%X", instr.imm_32);
             break;
-
+        case 0x36:
+            printf("ss\t");
+            printf("ss");
+            break;
+        case 0x37:
+            printf("aaa\t");
+            printf("al, ");
+            printf("ah");
+            break;
         case 0x39:
             printf("cmp\t");
             if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
@@ -2264,6 +2388,84 @@ void printInstruction(struct Instruction instr, int debug)
             printf("]");
             break;
 
+        case 0x8E:
+            printf("mov\t");
+            printf("?, "); // TODO: Review.
+            printf("word ptr "); // TODO: The computed number is likely wrong.
+            printf("[");
+            if (instr.scaleIndexBase) {
+                // TODO: False assumptions to remove later:
+                // - the Index part of SIB is assumed to be a register
+                for (i = 7; i >= 0; i--) { // & 0b00000111
+                    if (((instr.modRegRm & 0b00000111)) == i) {
+                        printf("%s+", reglist[i]);
+                        break;
+                    }
+                }
+                switch ((instr.scaleIndexBase & 0b11000000) >> 6) { // 0b11000000
+                    case 0x01: // 0b01
+                        printf("(");
+                        for (i = 7; i >= 0; i--) { // & 0b00111000
+                            if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                                printf("%s", reglist[i]);
+                                break;
+                            }
+                        }
+                        printf("*2)");
+                        break;
+                    case 0x02: // 0b10
+                        printf("(");
+                        for (i = 7; i >= 0; i--) { // & 0b00111000
+                            if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                                printf("%s", reglist[i]);
+                                break;
+                            }
+                        }
+                        printf("*4)");
+                        break;
+                    case 0x03: // 0b11
+                        printf("(");
+                        for (i = 7; i >= 0; i--) { // & 0b00111000
+                            if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                                printf("%s", reglist[i]);
+                                break;
+                            }
+                        }
+                        printf("*8)");
+                        break;
+                    default:
+                        for (i = 7; i >= 0; i--) { // & 0b00111000
+                            if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                                printf("%s", reglist[i]);
+                                break;
+                            }
+                        }
+                        break;
+                }
+                if (instr.disp_8) {
+                    if (instr.disp_8 & 0b10000000) // negative
+                        printf("-0x%X", -instr.disp_8);
+                    else
+                        printf("+0x%X", instr.disp_8);
+                }
+                if (instr.disp_32)  printf("+0x%X", instr.disp_32);
+            } else {
+                for (i = 7; i >= 0; i--) { // & 0b00000111
+                    if (((instr.modRegRm & 0b00000111) & i) == i) {
+                        printf("%s", reglist[i]);
+                        break;
+                    }
+                }
+                if (instr.disp_8) {
+                    if (instr.disp_8 & 0b10000000) // negative
+                        printf("-0x%X", -instr.disp_8);
+                    else
+                        printf("+0x%X", instr.disp_8);
+                }
+                if (instr.disp_32)  printf("+0x%X", instr.disp_32);
+            }
+            printf("]");
+            break;
         case 0x90:
             printf("nop");
             break;
@@ -2355,6 +2557,34 @@ void printInstruction(struct Instruction instr, int debug)
             break;
         case 0xCC:
             printf("int\t0x03");
+            break;
+        case 0xD0:
+            // TODO: Review. D1 and other following ones are similar
+            switch ((instr.modRegRm & 0b00111000) >> 3) { // & 0b00111000
+                case 0:
+                    printf("rol\t"); break;
+                case 1:
+                    printf("ror\t"); break;
+                case 2:
+                    printf("rcl\t"); break;
+                case 3:
+                    printf("rcr\t"); break;
+                case 4:
+                    printf("shl\t"); break;
+                case 5:
+                    printf("shr\t"); break;
+                case 6:
+                    printf("sal\t"); break;
+                case 7:
+                    printf("sar\t"); break;
+            }
+            for (i = 7; i >= 0; i--) { // & 0b00000111
+                if (((instr.modRegRm & 0b00000111)) == i) {
+                    printf("%s, ", reglist8l[i]);
+                    break;
+                }
+            }
+            printf("1");
             break;
         case 0xDB: // again; incomplete and wrong way of handling
             switch (instr.modRegRm) {
