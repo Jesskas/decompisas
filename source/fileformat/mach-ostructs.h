@@ -52,10 +52,24 @@ typedef struct segment_command {
     uint32_t      flags;
 } segment_command;
 
-typedef struct load_command {
-    uint32_t cmd;
-    uint32_t cmdsize;
-} load_command;
+typedef struct segment_command_64 {
+    uint32_t      cmd;
+    uint32_t      cmdsize;
+    char          segname[16];
+    uint64_t      vmaddr;
+    uint64_t      vmsize;
+    uint64_t      fileoff;
+    uint64_t      filesize;
+    uint32_t      maxprot;    // vm_prot_t
+    uint32_t      initprot;   // vm_prot_t
+    uint32_t      nsects;
+    uint32_t      flags;
+} segment_command_64;
+
+// typedef struct load_command {
+//     uint32_t cmd;
+//     uint32_t cmdsize;
+// } load_command;
 
 typedef struct section {
     char        sectname[16];
@@ -71,7 +85,23 @@ typedef struct section {
     uint32_t    reserved2;
 } section;
 
+typedef struct section_64 {
+    char        sectname[16];
+    char        segname[16];
+    uint64_t    addr;
+    uint64_t    size;
+    uint32_t    offset;
+    uint32_t    align;
+    uint32_t    reloff;
+    uint32_t    nreloc;
+    uint32_t    flags;
+    uint32_t    reserved1;
+    uint32_t    reserved2;
+} section_64;
+
 void printMachHeader(mach_header header);
 void printMachHeader64(mach_header_64 header);
 void printSegmentCommand(segment_command segment);
+void printSegmentCommand64(segment_command_64 segment);
 void printSection(section sect);
+void printSection64(section_64 sect);
