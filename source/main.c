@@ -5,6 +5,7 @@
 #include <string.h>
 #include "fileformat/pe.h"
 #include "fileformat/elf.h"
+#include "fileformat/mach-o.h"
 
 void printHexWithAscii(FILE* fp, long fileSize, unsigned int width);
 void parse(FILE* fp, long fileSize);
@@ -109,6 +110,23 @@ void parse(FILE* fp, long fileSize) {
         free(buffer);
         printf("ELF header detected, decompiling ELF program.\n");
         parseElf(fp, fileSize);
+
+    } else if (*(uint32_t*)&buffer[0] == 0xFEEDFACE ||
+               *(uint32_t*)&buffer[0] == 0xCEFAEDFE) {
+        if (fseek(fp, 0l, SEEK_SET) != 0) {
+            printf("Error seeking back to zero (parse).\n");
+        }
+        free(buffer);
+        printf("32-bit MACH-O header detected, decompiling MACH-O program.\n");
+        parseMach32(fp, fileSize);
+    } else if (*(uint32_t*)&buffer[0] == 0xFEEDFACF ||
+               *(uint32_t*)&buffer[0] == 0xCFFAEDFE) {
+        if (fseek(fp, 0l, SEEK_SET) != 0) {
+            printf("Error seeking back to zero (parse).\n");
+        }
+        free(buffer);
+        printf("64-bit MACH-O header detected, decompiling MACH-O program.\n");
+        parseMach64(fp, fileSize);
     } else {
         free(buffer);
         printf("Could not detect type of executable. Is this binary?\n");
