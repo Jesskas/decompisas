@@ -17,7 +17,7 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
     unsigned int byteCounter = 0;
     unsigned int prgmCounter = 0;
 
-    while (prgmCounter < 200 && byteCounter < codeSize) {
+    while (byteCounter < codeSize) {
         printf("%s:0x%08X | ", name, byteCounter + RVA);
         uint32_t oldByteCounter = byteCounter;
         int i = 0;  // for now... represents number of bytes in instruction
@@ -1032,6 +1032,9 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                     }
                     break;
                 case 0x8A:    // MOV r8 r/m8
+                    // TODO: Review
+                    instr.modRegRm            = code[byteCounter+1];
+                    instr.instructionBytes[i++] = code[byteCounter+1];
                     break;
                 case 0x8B:
                     instr.modRegRm            = code[byteCounter+1];
@@ -1170,7 +1173,8 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                 // case 0x99: cwd/cdq dx/edx, ax/eax
                 // case 0x9A: callf ptr16:16/32
                 // case 0x9B: fwait/wait
-                // case 0x9C: pushf/pushfd flags/eflags
+                case 0x9C: //pushf/pushfd flags/eflags
+                    break;
                 // case 0x9D: popf/popfd flags/eflags
                 // case 0x9E: sahf ah
                 // case 0x9F: lahf ah
@@ -1342,6 +1346,19 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                     break;
                 case 0xF3:
                     // f3 ab                   rep stos DWORD PTR es:[edi],eax
+                case 0xFF:
+                    instr.modRegRm =  code[byteCounter+1];
+                    instr.instructionBytes[i++] = code[byteCounter+1];
+                    if ((instr.modRegRm & INDIR_ADDR) == INDIR_ADDR) {
+                        // I'm not sure why this applies to INDIR_ADDR,
+                        // rather than INDIR_ADDR32
+                        instr.rel_32 =  *(uint32_t*)&code[byteCounter+2];
+                        instr.instructionBytes[i++] = code[byteCounter+2];
+                        instr.instructionBytes[i++] = code[byteCounter+3];
+                        instr.instructionBytes[i++] = code[byteCounter+4];
+                        instr.instructionBytes[i++] = code[byteCounter+5];
+                    }
+                    break;
                 default:
                     break;
             }
@@ -1354,7 +1371,39 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
             if ((oldByteCounter + RVA + instr.numInstrBytes) <= (RVA + codeSize))
                 printInstruction(instr, 1);
             else
+                printf("...");
+        }
+        // Two byte instructions!
+        else
+        {
+            instr.opcode  = code[byteCounter++];   // Mark two-byte by 0x0F
+            instr.opcode2 = code[byteCounter];
+            instr.instructionBytes[i++] = code[byteCounter];
 
+            switch (instr.opcode2) {
+                case 0x00:
+                    // 0F 	00 		0 	02+ 		P 			SLDT 	m16 	LDTR 									Store Local Descriptor Table Register
+                    //                               SLDT 	r16/32 	LDTR
+                    // 0F 	00 		1 	02+ 		P 			STR 	m16 	TR 									Store Task Register
+                    //                               STR 	r16/32 	TR
+                    // 0F 	00 		2 	02+ 		P 	0   LLDT 	LDTR 	r/m16 									Load Local Descriptor Table Register
+                    // 0F 	00 		3 	02+ 		P 	0 	LTR 	TR 	r/m16 									Load Task Register
+                    // 0F 	00 		4 	02+ 		P 			VERR 	r/m16 						....z... 	....z... 			Verify a Segment for Reading
+                    // 0F 	00 		5 	02+ 		P 			VERW 	r/m16 						....z... 	....z... 			Verify a Segment for Writing
+                    instr.modRegRm = code[byteCounter+1];
+                    instr.instructionBytes[i++] = code[byteCounter+1];
+                default:
+                    break;
+            }
+
+            instr.numInstrBytes = i;
+            byteCounter = oldByteCounter + i;
+
+            // TODO: Review. This seems to be what objdump does.
+            // Otherwise, I seem to disassemble garbage data
+            if ((oldByteCounter + RVA + instr.numInstrBytes) <= (RVA + codeSize))
+                printInstruction(instr, 1);
+            else
                 printf("...");
         }
 
@@ -1453,1198 +1502,1342 @@ void printInstruction(struct Instruction instr, int debug)
     }
 
     int i = 0;
-    switch (instr.opcode) {
-        case 0x00:
-            printf("add\t");
-            printf("byte ptr ");
-            printf("[");
-            if (instr.scaleIndexBase) {
-                // TODO: False assumptions to remove later:
-                // - the Index part of SIB is assumed to be a register
-                for (i = 7; i >= 0; i--) { // & 0b00000111
-                    if (((instr.modRegRm & 0b00000111)) == i) {
-                        printf("%s+", reglist[i]);
+    if (instr.opcode != 0x0F) {
+        switch (instr.opcode) {
+            case 0x00:
+                printf("add\t");
+                printf("byte ptr ");
+                printf("[");
+                if (instr.scaleIndexBase) {
+                    // TODO: False assumptions to remove later:
+                    // - the Index part of SIB is assumed to be a register
+                    for (i = 7; i >= 0; i--) { // & 0b00000111
+                        if (((instr.modRegRm & 0b00000111)) == i) {
+                            printf("%s+", reglist[i]);
+                            break;
+                        }
+                    }
+                    switch ((instr.scaleIndexBase & 0b11000000) >> 6) { // 0b11000000
+                        case 0x01: // 0b01
+                            printf("(");
+                            for (i = 7; i >= 0; i--) { // & 0b00111000
+                                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                                    printf("%s", reglist[i]);
+                                    break;
+                                }
+                            }
+                            printf("*2)");
+                            break;
+                        case 0x02: // 0b10
+                            printf("(");
+                            for (i = 7; i >= 0; i--) { // & 0b00111000
+                                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                                    printf("%s", reglist[i]);
+                                    break;
+                                }
+                            }
+                            printf("*4)");
+                            break;
+                        case 0x03: // 0b11
+                            printf("(");
+                            for (i = 7; i >= 0; i--) { // & 0b00111000
+                                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                                    printf("%s", reglist[i]);
+                                    break;
+                                }
+                            }
+                            printf("*8)");
+                            break;
+                        default:
+                            for (i = 7; i >= 0; i--) { // & 0b00111000
+                                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                                    printf("%s", reglist[i]);
+                                    break;
+                                }
+                            }
+                            break;
+                    }
+                    if (instr.disp_8) {
+                        if (instr.disp_8 & 0b10000000) // negative
+                            printf("-0x%X", -instr.disp_8);
+                        else
+                            printf("+0x%X", instr.disp_8);
+                    }
+                    if (instr.disp_32)  printf("+0x%X", instr.disp_32);
+                } else {
+                    for (i = 7; i >= 0; i--) { // & 0b00000111
+                        if (((instr.modRegRm & 0b00000111) & i) == i) {
+                            printf("%s", reglist[i]);
+                            break;
+                        }
+                    }
+                    if (instr.disp_8) {
+                        if (instr.disp_8 & 0b10000000) // negative
+                            printf("-0x%X", -instr.disp_8);
+                        else
+                            printf("+0x%X", instr.disp_8);
+                    }
+                    if (instr.disp_32)  printf("+0x%X", instr.disp_32);
+                }
+                printf("]");
+                for (i = 7; i >= 0; i--) {
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf(", %s", reglist8l[i]);
                         break;
                     }
                 }
-                switch ((instr.scaleIndexBase & 0b11000000) >> 6) { // 0b11000000
-                    case 0x01: // 0b01
-                        printf("(");
-                        for (i = 7; i >= 0; i--) { // & 0b00111000
-                            if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                                printf("%s", reglist[i]);
-                                break;
-                            }
-                        }
-                        printf("*2)");
+                break;
+            case 0x01:
+                printf("add\t");
+                printf("dword ptr ");
+                for (i = 7; i >= 0; i--) {
+                    if ((instr.modRegRm & 0b00000111) == i) {
+                        printf("[%s]", reglist[i]);
                         break;
-                    case 0x02: // 0b10
-                        printf("(");
-                        for (i = 7; i >= 0; i--) { // & 0b00111000
-                            if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                                printf("%s", reglist[i]);
-                                break;
-                            }
-                        }
-                        printf("*4)");
-                        break;
-                    case 0x03: // 0b11
-                        printf("(");
-                        for (i = 7; i >= 0; i--) { // & 0b00111000
-                            if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                                printf("%s", reglist[i]);
-                                break;
-                            }
-                        }
-                        printf("*8)");
-                        break;
-                    default:
-                        for (i = 7; i >= 0; i--) { // & 0b00111000
-                            if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                                printf("%s", reglist[i]);
-                                break;
-                            }
-                        }
-                        break;
+                    }
                 }
-                if (instr.disp_8) {
-                    if (instr.disp_8 & 0b10000000) // negative
-                        printf("-0x%X", -instr.disp_8);
-                    else
-                        printf("+0x%X", instr.disp_8);
+                for (i = 7; i >= 0; i--) {
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf(", %s", reglist[i]);
+                        break;
+                    }
                 }
-                if (instr.disp_32)  printf("+0x%X", instr.disp_32);
-            } else {
-                for (i = 7; i >= 0; i--) { // & 0b00000111
-                    if (((instr.modRegRm & 0b00000111) & i) == i) {
+                break;
+            case 0x02:
+                printf("add\t");
+                for (i = 7; i >= 0; i--) {
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf("%s, ", reglist8l[i]);
+                        break;
+                    }
+                }
+                printf("byte ptr ");
+                for (i = 7; i >= 0; i--) {
+                    if ((instr.modRegRm & 0b00000111) == i) {
+                        printf("[%s]", reglist[i]);
+                        break;
+                    }
+                }
+                break;
+            case 0x03:
+                printf("add\t");
+                for (i = 7; i >= 0; i--) {
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf("%s, ", reglist[i]);
+                        break;
+                    }
+                }
+                printf("dword ptr ");
+                for (i = 7; i >= 0; i--) {
+                    if ((instr.modRegRm & 0b00000111) == i) {
+                        printf("[%s]", reglist[i]);
+                        break;
+                    }
+                }
+                break;
+            case 0x04:
+                printf("add\t");
+                printf("al, ");
+                printf("0x%X", instr.imm_8);
+                break;
+            case 0x05:
+                printf("add\t");
+                printf("eax, ");
+                printf("0x%X", instr.imm_32);
+                break;
+            // ...
+            case 0x0C:
+                printf("or\t");
+                printf("al, ");
+                printf("0x%X", instr.imm_8);
+                break;
+            case 0x0E:
+                printf("push\t");
+                printf("cs");
+                break;
+            case 0x0F:
+                printf("sltd");
+                printf("!!![two-byte instruction...]");
+                break;
+            case 0x10:
+                printf("adc\t");
+                printf("byte ptr ");
+                for (i = 7; i >= 0; i--) {
+                    if ((instr.modRegRm & 0b00000111) == i) {
+                        printf("[%s]", reglist[i]);
+                        break;
+                    }
+                }
+                for (i = 7; i >= 0; i--) {
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf(", %s", reglist8l[i]);
+                        break;
+                    }
+                }
+                break;
+            case 0x11:
+                printf("adc\t");
+                printf("dword ptr ");
+                for (i = 7; i >= 0; i--) {
+                    if ((instr.modRegRm & 0b00000111) == i) {
+                        printf("[%s]", reglist[i]);
+                        break;
+                    }
+                }
+                for (i = 7; i >= 0; i--) {
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf(", %s", reglist[i]);
+                        break;
+                    }
+                }
+                break;
+            case 0x12:
+                printf("adc\t");
+                for (i = 7; i >= 0; i--) {
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf("%s, ", reglist8l[i]);
+                        break;
+                    }
+                }
+                printf("byte ptr ");
+                for (i = 7; i >= 0; i--) {
+                    if ((instr.modRegRm & 0b00000111) == i) {
+                        printf("[%s]", reglist[i]);
+                        break;
+                    }
+                }
+                break;
+            case 0x13:
+                printf("adc\t");
+                for (i = 7; i >= 0; i--) {
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf("%s, ", reglist[i]);
+                        break;
+                    }
+                }
+                printf("dword ptr ");
+                for (i = 7; i >= 0; i--) {
+                    if ((instr.modRegRm & 0b00000111) == i) {
+                        printf("[%s]", reglist[i]);
+                        break;
+                    }
+                }
+                break;
+            case 0x14:
+                printf("adc\t");
+                printf("al, ");
+                printf("0x%X", instr.imm_8);
+                break;
+            case 0x15:
+                printf("adc\t");
+                printf("eax, ");
+                printf("0x%X", instr.imm_32);
+                break;
+            case 0x16:
+                printf("push\t");
+                printf("ss");
+                break;
+            case 0x17:
+                printf("pop\t");
+                printf("ss");
+                break;
+            case 0x1A:
+                printf("sbb\t");
+                for (i = 7; i >= 0; i--) {
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf("%s, ", reglist8l[i]);
+                        break;
+                    }
+                }
+                printf("byte ptr ");
+                for (i = 7; i >= 0; i--) {
+                    if ((instr.modRegRm & 0b00000111) == i) {
+                        printf("[%s]", reglist[i]);
+                        break;
+                    }
+                  }
+                break;
+            case 0x1C:
+                printf("sbb\t");
+                printf("al, ");
+                printf("0x%X", instr.imm_8);
+                break;
+            case 0x1E:
+                printf("push\t");
+                printf("ds");
+                break;
+            case 0x1F:
+                printf("pop\t");
+                printf("ds");
+                break;
+            case 0x20:
+                printf("and\t");
+                printf("byte ptr ");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
+                for (i = 7; i >= 0; i--) {
+                    if ((instr.modRegRm & 0b00000111) == i) {
                         printf("%s", reglist[i]);
                         break;
                     }
                 }
                 if (instr.disp_8) {
                     if (instr.disp_8 & 0b10000000) // negative
-                        printf("-0x%X", -instr.disp_8);
-                    else
-                        printf("+0x%X", instr.disp_8);
-                }
-                if (instr.disp_32)  printf("+0x%X", instr.disp_32);
-            }
-            printf("]");
-            for (i = 7; i >= 0; i--) {
-                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                    printf(", %s", reglist8l[i]);
-                    break;
-                }
-            }
-            break;
-        case 0x01:
-            printf("add\t");
-            printf("dword ptr ");
-            for (i = 7; i >= 0; i--) {
-                if ((instr.modRegRm & 0b00000111) == i) {
-                    printf("[%s]", reglist[i]);
-                    break;
-                }
-            }
-            for (i = 7; i >= 0; i--) {
-                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                    printf(", %s", reglist[i]);
-                    break;
-                }
-            }
-            break;
-        case 0x02:
-            printf("add\t");
-            for (i = 7; i >= 0; i--) {
-                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                    printf("%s, ", reglist8l[i]);
-                    break;
-                }
-            }
-            printf("byte ptr ");
-            for (i = 7; i >= 0; i--) {
-                if ((instr.modRegRm & 0b00000111) == i) {
-                    printf("[%s]", reglist[i]);
-                    break;
-                }
-            }
-            break;
-        case 0x03:
-            printf("add\t");
-            for (i = 7; i >= 0; i--) {
-                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                    printf("%s, ", reglist[i]);
-                    break;
-                }
-            }
-            printf("dword ptr ");
-            for (i = 7; i >= 0; i--) {
-                if ((instr.modRegRm & 0b00000111) == i) {
-                    printf("[%s]", reglist[i]);
-                    break;
-                }
-            }
-            break;
-        case 0x04:
-            printf("add\t");
-            printf("al, ");
-            printf("0x%X", instr.imm_8);
-            break;
-        case 0x05:
-            printf("add\t");
-            printf("eax, ");
-            printf("0x%X", instr.imm_32);
-            break;
-        // ...
-        case 0x0E:
-            printf("push\t");
-            printf("cs");
-            break;
-        case 0x10:
-            printf("adc\t");
-            printf("byte ptr ");
-            for (i = 7; i >= 0; i--) {
-                if ((instr.modRegRm & 0b00000111) == i) {
-                    printf("[%s]", reglist[i]);
-                    break;
-                }
-            }
-            for (i = 7; i >= 0; i--) {
-                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                    printf(", %s", reglist8l[i]);
-                    break;
-                }
-            }
-            break;
-        case 0x11:
-            printf("adc\t");
-            printf("dword ptr ");
-            for (i = 7; i >= 0; i--) {
-                if ((instr.modRegRm & 0b00000111) == i) {
-                    printf("[%s]", reglist[i]);
-                    break;
-                }
-            }
-            for (i = 7; i >= 0; i--) {
-                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                    printf(", %s", reglist[i]);
-                    break;
-                }
-            }
-            break;
-        case 0x12:
-            printf("adc\t");
-            for (i = 7; i >= 0; i--) {
-                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                    printf("%s, ", reglist8l[i]);
-                    break;
-                }
-            }
-            printf("byte ptr ");
-            for (i = 7; i >= 0; i--) {
-                if ((instr.modRegRm & 0b00000111) == i) {
-                    printf("[%s]", reglist[i]);
-                    break;
-                }
-            }
-            break;
-        case 0x13:
-            printf("adc\t");
-            for (i = 7; i >= 0; i--) {
-                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                    printf("%s, ", reglist[i]);
-                    break;
-                }
-            }
-            printf("dword ptr ");
-            for (i = 7; i >= 0; i--) {
-                if ((instr.modRegRm & 0b00000111) == i) {
-                    printf("[%s]", reglist[i]);
-                    break;
-                }
-            }
-            break;
-        case 0x14:
-            printf("adc\t");
-            printf("al, ");
-            printf("0x%X", instr.imm_8);
-            break;
-        case 0x15:
-            printf("adc\t");
-            printf("eax, ");
-            printf("0x%X", instr.imm_32);
-            break;
-        case 0x16:
-            printf("push\t");
-            printf("ss");
-            break;
-        case 0x17:
-            printf("pop\t");
-            printf("ss");
-            break;
-        case 0x1A:
-            printf("sbb\t");
-            for (i = 7; i >= 0; i--) {
-                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                    printf("%s, ", reglist8l[i]);
-                    break;
-                }
-            }
-            printf("byte ptr ");
-            for (i = 7; i >= 0; i--) {
-                if ((instr.modRegRm & 0b00000111) == i) {
-                    printf("[%s]", reglist[i]);
-                    break;
-                }
-              }
-            break;
-        case 0x1E:
-            printf("push\t");
-            printf("ds");
-            break;
-        case 0x1F:
-            printf("pop\t");
-            printf("ds");
-            break;
-        case 0x20:
-            printf("and\t");
-            printf("byte ptr ");
-            for (i = 7; i >= 0; i--) {
-                if ((instr.modRegRm & 0b00000111) == i) {
-                    printf("[%s]", reglist[i]);
-                    break;
-                }
-            }
-            for (i = 7; i >= 0; i--) {
-                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                    printf(", %s", reglist8l[i]);
-                    break;
-                }
-            }
-            break;
-        case 0x26:
-            printf("es\t");
-            printf("es");
-            break;
-        case 0x27:
-            printf("daa\t");
-            printf("al");
-            break;
-        case 0x2E:
-            printf("cs\t");
-            printf("cs");
-            break;
-        case 0x2F:
-            printf("das\t");
-            // TODO: Review. printf("al");
-            break;
-        case 0x30: // r/m8, r8
-            printf("xor\t");
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
-                printf("byte ptr ");
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
-            for (i = 7; i >= 0; i--) {
-                if ((instr.modRegRm & 0b00000111) == i) {
-                    printf("%s", reglist8l[i]);
-                    break;
-                }
-            }
-            if (instr.disp_8) {
-                if (instr.disp_8 & 0b10000000) // negative
-                    printf("-0x%X", (int8_t)(-instr.disp_8));
-                else
-                    printf("+0x%X", instr.disp_8);
-            }
-            if (instr.disp_32) {
-                if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
-                    printf("-0x%X", (int32_t)(-instr.disp_32));
-                else
-                    printf("+0x%X", instr.disp_32);
-            }
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
-            for (i = 7; i >= 0; i--) {
-                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                    printf(", %s", reglist8l[i]);
-                    break;
-                }
-            }
-            break;
-        case 0x31: // r/m16/32, r16/32
-            printf("xor\t");
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
-                printf("dword ptr ");
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
-            for (i = 7; i >= 0; i--) {
-                if ((instr.modRegRm & 0b00000111) == i) {
-                    printf("%s", reglist[i]);
-                    break;
-                }
-            }
-            if (instr.disp_8) {
-                if (instr.disp_8 & 0b10000000) // negative
-                    printf("-0x%X", (int8_t)(-instr.disp_8));
-                else
-                    printf("+0x%X", instr.disp_8);
-            }
-            if (instr.disp_32) {
-                if (instr.disp_32 & 0b1000000000000000000000000000000) // negative
-                    printf("-0x%X", (int32_t)(-instr.disp_32));
-                else
-                    printf("+0x%X", instr.disp_32);
-            }
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
-            for (i = 7; i >= 0; i--) {
-                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                    printf(", %s", reglist[i]);
-                    break;
-                }
-            }
-            break;
-        case 0x32: // r8, r/m8
-            printf("xor\t");
-            for (i = 7; i >= 0; i--) {
-                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                    printf("%s, ", reglist8l[i]);
-                    break;
-                }
-            }
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
-                printf("byte ptr ");
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
-            for (i = 7; i >= 0; i--) {
-                if ((instr.modRegRm & 0b00000111) == i) {
-                    printf("%s", reglist[i]);
-                    break;
-                }
-            }
-            if (instr.disp_8) {
-                if (instr.disp_8 & 0b1000000) // negative
-                    printf("-0x%X", (int8_t)(-instr.disp_8));
-                else
-                    printf("+0x%X", instr.disp_8);
-            }
-            if (instr.disp_32) {
-                if (instr.disp_32 & 0b100000000) // negative
-                    printf("-0x%X", (int32_t)(-instr.disp_32));
-                else
-                    printf("+0x%X", instr.disp_32);
-            }
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
-            break;
-        case 0x33: // r16/32, r/m16/32
-            printf("xor\t");
-            for (i = 7; i >= 0; i--) {
-            		if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-            		    printf("%s, ", reglist[i]);
-            		    break;
-            		}
-      	    }
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
-                printf("dword ptr ");
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
-            for (i = 7; i >= 0; i--) {
-            		if ((instr.modRegRm & 0b00000111) == i) {
-            		    printf("%s", reglist[i]);
-            		    break;
-            		}
-            }
-            if (instr.disp_8) {
-                if (instr.disp_8 & 0b10000000) // negative
-                    printf("-0x%X", (int8_t)(-instr.disp_8));
-                else
-                    printf("+0x%X", instr.disp_8);
-            }
-            if (instr.disp_32) {
-                if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
-                    printf("-0x%X", (int32_t)(-instr.disp_32));
-                else
-                    printf("+0x%X", instr.disp_32);
-            }
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
-            break;
-        case 0x34:
-            printf("xor\t");
-            printf("al, ");
-            printf("0x%X", instr.imm_8);
-            break;
-        case 0x35:
-            printf("xor\t");
-            printf("eax, ");
-            printf("0x%X", instr.imm_32);
-            break;
-        case 0x36:
-            printf("ss\t");
-            printf("ss");
-            break;
-        case 0x37:
-            printf("aaa\t");
-            printf("al, ");
-            printf("ah");
-            break;
-        case 0x39:
-            printf("cmp\t");
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
-                printf("dword ptr ");
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
-            for (i = 7; i >= 0; i--) {
-                if ((instr.modRegRm & 0b00000111) == i) {
-                    printf("%s", reglist[i]);
-                    break;
-                }
-            }
-            if (instr.disp_8) {
-                if (instr.disp_8 & 0b10000000) // negative
-                    printf("-0x%X", (int8_t)(-instr.disp_8));
-                else
-                    printf("+0x%X", instr.disp_8);
-            }
-            if (instr.disp_32) {
-                if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
-                    printf("-0x%X", (int32_t)(-instr.disp_32));
-                else
-                    printf("+0x%X", instr.disp_32);
-            }
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
-            for (i = 7; i >= 0; i--) {
-                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                    printf(", %s", reglist[i]);
-                    break;
-                }
-            }
-            break;
-
-        case 0x3B:
-            printf("cmp\t");
-            for (i = 7; i >= 0; i--) {
-            		if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-            		    printf("%s, ", reglist[i]);
-            		    break;
-            		}
-      	    }
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
-                printf("dword ptr ");
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
-            for (i = 7; i >= 0; i--) {
-            		if ((instr.modRegRm & 0b00000111) == i) {
-            		    printf("%s", reglist[i]);
-            		    break;
-            		}
-            }
-            if (instr.disp_8) {
-                if (instr.disp_8 & 0b10000000) // negative
-                    printf("-0x%X", (int8_t)(-instr.disp_8));
-                else
-                    printf("+0x%X", instr.disp_8);
-            }
-            if (instr.disp_32) {
-                if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
-                    printf("-0x%X", (int32_t)(-instr.disp_32));
-                else
-                    printf("+0x%X", instr.disp_32);
-            }
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
-            break;
-        // INC Opcodes (0b0100 0000), skip through
-        case 0x40:
-        case 0x41:
-        case 0x42:
-        case 0x43:
-        case 0x44:
-        case 0x45:
-        case 0x46:
-        case 0x47:
-            printf("inc\t");
-            for (i = 7; i >= 0; i--) {
-                if ((instr.opcode & i) == i) {
-                    printf("%s", reglist[i]);
-                    break;
-                }
-            }
-            break;
-        // DEC Opcodes (0b0100 1000), skip through
-        case 0x48:
-        case 0x49:
-        case 0x4A:
-        case 0x4B:
-        case 0x4C:
-        case 0x4D:
-        case 0x4E:
-        case 0x4F:
-            printf("dec\t");
-            for (i = 7; i >= 0; i--) {
-                if ((instr.opcode & i) == i) {
-                    printf("%s", reglist[i]);
-                    break;
-                }
-            }
-            break;
-        // Push Opcodes
-        case 0x50:
-        case 0x51:
-        case 0x52:
-        case 0x53:
-        case 0x54:
-        case 0x55:
-        case 0x56:
-        case 0x57:
-            printf("push\t");
-            for (i = 7; i >= 0; i--) {
-                if ((instr.opcode & i) == i) {
-                    printf("%s", reglist[i]);
-                    break;
-                }
-            }
-            break;
-        // Pop Opcodes
-        case 0x58:
-        case 0x59:
-        case 0x5A:
-        case 0x5B:
-        case 0x5C:
-        case 0x5D:
-        case 0x5E:
-        case 0x5F:
-            printf("pop\t");
-            for (i = 7; i >= 0; i--) {
-                if ((instr.opcode & i) == i) {
-                    printf("%s", reglist[i]);
-                    break;
-                }
-            }
-            break;
-        case 0x68:
-            printf("push\t");
-            printf("0x%X", instr.imm_32);
-            break;
-        case 0x69:
-            printf("imul\t");
-            for (i = 7; i >= 0; i--) { // & 0b00111000
-                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                    printf("%s, ", reglist[i]);
-                    break;
-                }
-            }
-
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
-                printf("dword ptr ");
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
-            for (i = 7; i >= 0; i--) { // & 0b00000111
-                if (((instr.modRegRm & 0b00000111)) == i) {
-                    printf("%s", reglist[i]);
-                    break;
-                }
-            }
-            if (instr.disp_8) {
-                if (instr.disp_8 & 0b10000000) // negative
-                    printf("-0x%X", (int8_t)(-instr.disp_8));
-                else
-                    printf("+0x%X", instr.disp_8);
-            }
-            if (instr.disp_32) {
-                if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
-                    printf("-0x%X", (int32_t)(-instr.disp_32));
-                else
-                    printf("+0x%X", instr.disp_32);
-            }
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
-            printf(", 0x%X", instr.imm_32);
-            break;
-        case 0x6A:
-            printf("push\t");
-            printf("0x%X", instr.imm_8);
-            break;
-
-        case 0x6C:
-            // TODO: Review
-            // INS[B] 	m8 	DX
-            // "Input from Port to String"
-            printf("ins\t");
-            printf("byte ptr es:[edi],dx");
-            break;
-
-        // Varying J Opcodes (0b0111 0000), all are [j* rel8]
-        case 0x70:  // JO
-            printf("j0\t");
-            printf("0x%X",
-                instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
-            break;
-        case 0x71:  // JNO
-            printf("jn0\t");
-            printf("0x%X",
-                instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
-            break;
-        case 0x72:  // JB / JNAE / JC
-            printf("jb\t");
-            printf("0x%X",
-                instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
-            break;
-        case 0x73:  // JNB / JAE / JNC
-            printf("jnb\t");
-            printf("0x%X",
-                instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
-            break;
-        case 0x74:  // JZ / JE
-            // TODO: Bug occurs where this isn't always accurate.
-            // Reduplicate: some clenv-compiled hello world.
-            printf("je\t"); // or, printf("jz\t");
-            printf("0x%X",
-                instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
-            break;
-        case 0x75:  // JNZ / JNE
-            printf("jne\t"); // or, printf("jnz\t");
-            printf("0x%X",
-                instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
-            break;
-        case 0x76:  // JBE / JNA
-            printf("jbe\t");
-            printf("0x%X",
-                instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
-            break;
-        case 0x77:  // JNBE / JA
-            printf("jnbe\t");
-            printf("0x%X",
-                instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
-            break;
-        case 0x78:  // JS
-            printf("js\t");
-            printf("0x%X",
-                instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
-            break;
-        case 0x79:  // JNS
-            printf("jns\t");
-            printf("0x%X",
-                instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
-            break;
-        case 0x7A:  // JP / JPE
-            printf("jp\t");
-            printf("0x%X",
-                instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
-            break;
-        case 0x7B:  // JNP / JP0
-            printf("jnp\t");
-            printf("0x%X",
-                instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
-            break;
-        case 0x7C:  // JL / JNGE
-            printf("jl\t");
-            printf("0x%X",
-                instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
-            break;
-        case 0x7D:  // JNL / JGE
-            printf("jnl\t");
-            printf("0x%X",
-                instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
-            break;
-        case 0x7E:  // JLE / JNG
-            printf("jle\t");
-            printf("0x%X",
-                instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
-            break;
-        case 0x7F:  // JNLE / JG
-            printf("rel+%i\n", instr.rel_8);
-            printf("0x%X",
-                instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
-            break;
-
-        case 0x83: // r/m16/32, imm8
-            switch ((instr.modRegRm & 0b00111000) >> 3) { // & 0b00111000
-                case 0:
-                    printf("add\t"); break;
-                case 1:
-                    printf("or\t"); break;
-                case 2:
-                    printf("adc\t"); break;
-                case 3:
-                    printf("sbb\t"); break;
-                case 4:
-                    printf("and\t"); break;
-                case 5:
-                    printf("sub\t"); break;
-                case 6:
-                    printf("xor\t"); break;
-                case 7:
-                    printf("cmp\t"); break;
-            }
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
-                printf("dword ptr ");
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
-            for (i = 7; i >= 0; i--) { // & 0b00000111
-                if (((instr.modRegRm & 0b00000111)) == i) {
-                    printf("%s", reglist[i]);
-                    break;
-                }
-            }
-            if (instr.disp_8) {
-                if (instr.disp_8 & 0b10000000) // negative
-                    printf("-0x%X", (int8_t)(-instr.disp_8));
-                else
-                    printf("+0x%X", instr.disp_8);
-            }
-            if (instr.disp_32) {
-                if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
-                    printf("-0x%X", (int32_t)(-instr.disp_32));
-                else
-                    printf("+0x%X", instr.disp_32);
-            }
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
-            printf(", 0x%X", instr.imm_8);
-            break;
-        case 0x84:    // TEST r/m8 r8
-            printf("test\t");
-            for (i = 7; i >= 0; i--) { // & 0b00000111
-                if (((instr.modRegRm & 0b00000111)) == i) {
-                    printf("%s, ", reglist8l[i]);
-                    break;
-                }
-            }
-            for (i = 7; i >= 0; i--) { // & 0b00111000
-                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                    printf("%s", reglist8l[i]);
-                    break;
-                }
-            }
-            break;
-        case 0x85:    // TEST r/m16/32 r16/32
-            printf("test\t");
-            for (i = 7; i >= 0; i--) { // & 0b00000111
-                if (((instr.modRegRm & 0b00000111)) == i) {
-                    printf("%s, ", reglist[i]);
-                    break;
-                }
-            }
-            for (i = 7; i >= 0; i--) { // & 0b00111000
-                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                    printf("%s", reglist[i]);
-                    break;
-                }
-            }
-            break;
-        case 0x88: // mov r/m8 r8
-            printf("mov\t");
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
-                printf("byte ptr ");
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
-            for (i = 7; i >= 0; i--) { // & 0b00000111
-                if (((instr.modRegRm & 0b00000111)) == i) {
-                    printf("%s", reglist[i]);
-                    break;
-                }
-            }
-            if (instr.disp_8) {
-                if (instr.disp_8 & 0b10000000) // negative
-                    printf("-0x%X", (int8_t)(-instr.disp_8));
-                else
-                    printf("+0x%X", instr.disp_8);
-            }
-            if (instr.disp_32) {
-                if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
-                    printf("-0x%X", (int32_t)(-instr.disp_32));
-                else
-                    printf("+0x%X", instr.disp_32);
-            }
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
-            for (i = 7; i >= 0; i--) { // & 0b00111000
-                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                    printf(", %s", reglist8l[i]);
-                    break;
-                }
-            }
-            break;
-        case 0x89: // mov r/m16/32 r16/32
-            printf("mov\t");
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
-                printf("dword ptr ");
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
-            for (i = 7; i >= 0; i--) { // & 0b00000111
-                if (((instr.modRegRm & 0b00000111)) == i) {
-                    printf("%s", reglist[i]);
-                    break;
-                }
-            }
-            if (instr.disp_8) {
-                if (instr.disp_8 & 0b10000000) // negative
-                    printf("-0x%X", (int8_t)(-instr.disp_8));
-                else
-                    printf("+0x%X", instr.disp_8);
-            }
-            if (instr.disp_32) {
-                if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
-                    printf("-0x%X", (int32_t)(-instr.disp_32));
-                else
-                    printf("+0x%X", instr.disp_32);
-            }
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
-            for (i = 7; i >= 0; i--) { // & 0b00111000
-                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                    printf(", %s", reglist[i]);
-                    break;
-                }
-            }
-            break;
-        case 0x8B: // mov r16/32 r/m16/32 (flipped order from 0x8A)
-            printf("mov\t");
-            for (i = 7; i >= 0; i--) { // & 0b00111000
-                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                    printf("%s, ", reglist[i]);
-                    break;
-                }
-            }
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
-                printf("dword ptr ");
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
-            for (i = 7; i >= 0; i--) { // & 0b00000111
-                if (((instr.modRegRm & 0b00000111)) == i) {
-                    printf("%s", reglist[i]);
-                    break;
-                }
-            }
-            if (instr.disp_8) {
-                if (instr.disp_8 & 0b10000000) // negative
-                    printf("-0x%X", (int8_t)(-instr.disp_8));
-                else
-                    printf("+0x%X", instr.disp_8);
-            }
-            if (instr.disp_32) {
-                if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
-                    printf("-0x%X", (int32_t)(-instr.disp_32));
-                else
-                    printf("+0x%X", instr.disp_32);
-            }
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
-            break;
-        case 0x8D:
-            printf("lea\t");
-            for (i = 7; i >= 0; i--) { // & 0b00111000
-                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                    printf("%s, ", reglist[i]);
-                    break;
-                }
-            }
-            printf("[");
-            if (instr.scaleIndexBase) {
-                // TODO: False assumptions to remove later:
-                // - the Index part of SIB is assumed to be a register
-                for (i = 7; i >= 0; i--) { // & 0b00000111
-                    if (((instr.modRegRm & 0b00000111)) == i) {
-                        printf("%s+", reglist[i]);
-                        break;
-                    }
-                }
-                switch ((instr.scaleIndexBase & 0b11000000) >> 6) { // 0b11000000
-                    case 0x01: // 0b01
-                        printf("(");
-                        for (i = 7; i >= 0; i--) { // & 0b00111000
-                            if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                                printf("%s", reglist[i]);
-                                break;
-                            }
-                        }
-                        printf("*2)");
-                        break;
-                    case 0x02: // 0b10
-                        printf("(");
-                        for (i = 7; i >= 0; i--) { // & 0b00111000
-                            if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                                printf("%s", reglist[i]);
-                                break;
-                            }
-                        }
-                        printf("*4)");
-                        break;
-                    case 0x03: // 0b11
-                        printf("(");
-                        for (i = 7; i >= 0; i--) { // & 0b00111000
-                            if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                                printf("%s", reglist[i]);
-                                break;
-                            }
-                        }
-                        printf("*8)");
-                        break;
-                    default:
-                        for (i = 7; i >= 0; i--) { // & 0b00111000
-                            if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                                printf("%s", reglist[i]);
-                                break;
-                            }
-                        }
-                        break;
-                }
-                if (instr.disp_8) {
-                    if (instr.disp_8 & 0b10000000) // negative
-                        printf("-0x%X", -instr.disp_8);
-                    else
-                        printf("+0x%X", instr.disp_8);
-                }
-                if (instr.disp_32)  printf("+0x%X", instr.disp_32);
-            } else {
-                for (i = 7; i >= 0; i--) { // & 0b00000111
-                    if (((instr.modRegRm & 0b00000111) & i) == i) {
-                        printf("%s", reglist[i]);
-                        break;
-                    }
-                }
-                if (instr.disp_8) {
-                    if (instr.disp_8 & 0b10000000) // negative
-                        printf("-0x%X", -instr.disp_8);
-                    else
-                        printf("+0x%X", instr.disp_8);
-                }
-                if (instr.disp_32)  printf("+0x%X", instr.disp_32);
-            }
-            printf("]");
-            break;
-
-        case 0x8E:
-            printf("mov\t");
-            printf("?, "); // TODO: Review.
-            printf("word ptr "); // TODO: The computed number is likely wrong.
-            printf("[");
-            if (instr.scaleIndexBase) {
-                // TODO: False assumptions to remove later:
-                // - the Index part of SIB is assumed to be a register
-                for (i = 7; i >= 0; i--) { // & 0b00000111
-                    if (((instr.modRegRm & 0b00000111)) == i) {
-                        printf("%s+", reglist[i]);
-                        break;
-                    }
-                }
-                switch ((instr.scaleIndexBase & 0b11000000) >> 6) { // 0b11000000
-                    case 0x01: // 0b01
-                        printf("(");
-                        for (i = 7; i >= 0; i--) { // & 0b00111000
-                            if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                                printf("%s", reglist[i]);
-                                break;
-                            }
-                        }
-                        printf("*2)");
-                        break;
-                    case 0x02: // 0b10
-                        printf("(");
-                        for (i = 7; i >= 0; i--) { // & 0b00111000
-                            if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                                printf("%s", reglist[i]);
-                                break;
-                            }
-                        }
-                        printf("*4)");
-                        break;
-                    case 0x03: // 0b11
-                        printf("(");
-                        for (i = 7; i >= 0; i--) { // & 0b00111000
-                            if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                                printf("%s", reglist[i]);
-                                break;
-                            }
-                        }
-                        printf("*8)");
-                        break;
-                    default:
-                        for (i = 7; i >= 0; i--) { // & 0b00111000
-                            if (((instr.modRegRm & 0b00111000) >> 3) == i) {
-                                printf("%s", reglist[i]);
-                                break;
-                            }
-                        }
-                        break;
-                }
-                if (instr.disp_8) {
-                    if (instr.disp_8 & 0b10000000) // negative
-                        printf("-0x%X", -instr.disp_8);
+                        printf("-0x%X", (int8_t)(-instr.disp_8));
                     else
                         printf("+0x%X", instr.disp_8);
                 }
                 if (instr.disp_32) {
                     if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
-                        printf("-0x%X", -instr.disp_32);
+                        printf("-0x%X", (int32_t)(-instr.disp_32));
                     else
                         printf("+0x%X", instr.disp_32);
                 }
-            } else {
-                for (i = 7; i >= 0; i--) { // & 0b00000111
-                    if (((instr.modRegRm & 0b00000111) & i) == i) {
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
+
+                for (i = 7; i >= 0; i--) {
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf(", %s", reglist8l[i]);
+                        break;
+                    }
+                }
+                break;
+            case 0x21:
+                printf("and\t");
+                printf("dword ptr ");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
+                for (i = 7; i >= 0; i--) {
+                    if ((instr.modRegRm & 0b00000111) == i) {
                         printf("%s", reglist[i]);
                         break;
                     }
                 }
                 if (instr.disp_8) {
                     if (instr.disp_8 & 0b10000000) // negative
-                        printf("-0x%X", -instr.disp_8);
+                        printf("-0x%X", (int8_t)(-instr.disp_8));
                     else
                         printf("+0x%X", instr.disp_8);
                 }
                 if (instr.disp_32) {
                     if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
-                        printf("-0x%X", -instr.disp_32);
+                        printf("-0x%X", (int32_t)(-instr.disp_32));
                     else
                         printf("+0x%X", instr.disp_32);
                 }
-            }
-            printf("]");
-            break;
-        case 0x90:
-            printf("nop");
-            break;
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
 
-        case 0xA1:
-            printf("mov\t");
-            printf("eax, ");
-            printf("ds:"); // TODO: I can't confirm the meaning of this
-            printf("0x%X", instr.disp_32);
-            break;
-        case 0xAD:
-            // NOTE: processor specific instruction. see:
-            // http://ref.x86asm.net/#column_proc
-            // Because is is 03+ (this is 32-bit x86/80386), use lods[d]
-            // lods eax, m16/32
-            printf("lods\t");
-            printf("eax, ");
-            printf("dword ptr ");
-            printf("ds:[esi]");
-            break;
-        case 0xAE:
-            printf("scas\t");
-            printf("al, ");
-            // TODO: Review
-            printf("byte ptr es:[edi]");
-            break;
+                for (i = 7; i >= 0; i--) {
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf(", %s", reglist[i]);
+                        break;
+                    }
+                }
+                break;
+            case 0x26:
+                printf("es\t");
+                printf("es");
+                break;
+            case 0x27:
+                printf("daa\t");
+                printf("al");
+                break;
+            case 0x2E:
+                printf("cs\t");
+                printf("cs");
+                break;
+            case 0x2F:
+                printf("das\t");
+                // TODO: Review. printf("al");
+                break;
+            case 0x30: // r/m8, r8
+                printf("xor\t");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
+                    printf("byte ptr ");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
+                for (i = 7; i >= 0; i--) {
+                    if ((instr.modRegRm & 0b00000111) == i) {
+                        printf("%s", reglist8l[i]);
+                        break;
+                    }
+                }
+                if (instr.disp_8) {
+                    if (instr.disp_8 & 0b10000000) // negative
+                        printf("-0x%X", (int8_t)(-instr.disp_8));
+                    else
+                        printf("+0x%X", instr.disp_8);
+                }
+                if (instr.disp_32) {
+                    if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
+                        printf("-0x%X", (int32_t)(-instr.disp_32));
+                    else
+                        printf("+0x%X", instr.disp_32);
+                }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
+                for (i = 7; i >= 0; i--) {
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf(", %s", reglist8l[i]);
+                        break;
+                    }
+                }
+                break;
+            case 0x31: // r/m16/32, r16/32
+                printf("xor\t");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
+                    printf("dword ptr ");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
+                for (i = 7; i >= 0; i--) {
+                    if ((instr.modRegRm & 0b00000111) == i) {
+                        printf("%s", reglist[i]);
+                        break;
+                    }
+                }
+                if (instr.disp_8) {
+                    if (instr.disp_8 & 0b10000000) // negative
+                        printf("-0x%X", (int8_t)(-instr.disp_8));
+                    else
+                        printf("+0x%X", instr.disp_8);
+                }
+                if (instr.disp_32) {
+                    if (instr.disp_32 & 0b1000000000000000000000000000000) // negative
+                        printf("-0x%X", (int32_t)(-instr.disp_32));
+                    else
+                        printf("+0x%X", instr.disp_32);
+                }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
+                for (i = 7; i >= 0; i--) {
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf(", %s", reglist[i]);
+                        break;
+                    }
+                }
+                break;
+            case 0x32: // r8, r/m8
+                printf("xor\t");
+                for (i = 7; i >= 0; i--) {
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf("%s, ", reglist8l[i]);
+                        break;
+                    }
+                }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
+                    printf("byte ptr ");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
+                for (i = 7; i >= 0; i--) {
+                    if ((instr.modRegRm & 0b00000111) == i) {
+                        printf("%s", reglist[i]);
+                        break;
+                    }
+                }
+                if (instr.disp_8) {
+                    if (instr.disp_8 & 0b1000000) // negative
+                        printf("-0x%X", (int8_t)(-instr.disp_8));
+                    else
+                        printf("+0x%X", instr.disp_8);
+                }
+                if (instr.disp_32) {
+                    if (instr.disp_32 & 0b100000000) // negative
+                        printf("-0x%X", (int32_t)(-instr.disp_32));
+                    else
+                        printf("+0x%X", instr.disp_32);
+                }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
+                break;
+            case 0x33: // r16/32, r/m16/32
+                printf("xor\t");
+                for (i = 7; i >= 0; i--) {
+                		if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                		    printf("%s, ", reglist[i]);
+                		    break;
+                		}
+          	    }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
+                    printf("dword ptr ");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
+                for (i = 7; i >= 0; i--) {
+                		if ((instr.modRegRm & 0b00000111) == i) {
+                		    printf("%s", reglist[i]);
+                		    break;
+                		}
+                }
+                if (instr.disp_8) {
+                    if (instr.disp_8 & 0b10000000) // negative
+                        printf("-0x%X", (int8_t)(-instr.disp_8));
+                    else
+                        printf("+0x%X", instr.disp_8);
+                }
+                if (instr.disp_32) {
+                    if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
+                        printf("-0x%X", (int32_t)(-instr.disp_32));
+                    else
+                        printf("+0x%X", instr.disp_32);
+                }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
+                break;
+            case 0x34:
+                printf("xor\t");
+                printf("al, ");
+                printf("0x%X", instr.imm_8);
+                break;
+            case 0x35:
+                printf("xor\t");
+                printf("eax, ");
+                printf("0x%X", instr.imm_32);
+                break;
+            case 0x36:
+                printf("ss\t");
+                printf("ss");
+                break;
+            case 0x37:
+                printf("aaa\t");
+                printf("al, ");
+                printf("ah");
+                break;
+            case 0x39:
+                printf("cmp\t");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
+                    printf("dword ptr ");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
+                for (i = 7; i >= 0; i--) {
+                    if ((instr.modRegRm & 0b00000111) == i) {
+                        printf("%s", reglist[i]);
+                        break;
+                    }
+                }
+                if (instr.disp_8) {
+                    if (instr.disp_8 & 0b10000000) // negative
+                        printf("-0x%X", (int8_t)(-instr.disp_8));
+                    else
+                        printf("+0x%X", instr.disp_8);
+                }
+                if (instr.disp_32) {
+                    if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
+                        printf("-0x%X", (int32_t)(-instr.disp_32));
+                    else
+                        printf("+0x%X", instr.disp_32);
+                }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
+                for (i = 7; i >= 0; i--) {
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf(", %s", reglist[i]);
+                        break;
+                    }
+                }
+                break;
 
-        // Mov, Imm8
-        case 0xB0:
-        case 0xB1:
-        case 0xB2:
-        case 0xB3:
-        case 0xB4:
-        case 0xB5:
-        case 0xB6:
-        case 0xB7:
-            printf("mov\t");
-            for (i = 7; i >= 0; i--) {
-                if ((instr.opcode & i) == i) {
-                    printf("%s, ", reglist8l[i]);
-                    break;
+            case 0x3B:
+                printf("cmp\t");
+                for (i = 7; i >= 0; i--) {
+                		if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                		    printf("%s, ", reglist[i]);
+                		    break;
+                		}
+          	    }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
+                    printf("dword ptr ");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
+                for (i = 7; i >= 0; i--) {
+                		if ((instr.modRegRm & 0b00000111) == i) {
+                		    printf("%s", reglist[i]);
+                		    break;
+                		}
                 }
-            }
-            printf("0x%X", instr.imm_8);
-            break;
-        // Mov, Imm32
-        case 0xB8:
-        case 0xB9:
-        case 0xBA:
-        case 0xBB:
-        case 0xBC:
-        case 0xBD:
-        case 0xBE:
-        case 0xBF:
-            printf("mov\t");
-            for (i = 7; i >= 0; i--) {
-                if ((instr.opcode & i) == i) {
-                    printf("%s, ", reglist[i]);
-                    break;
+                if (instr.disp_8) {
+                    if (instr.disp_8 & 0b10000000) // negative
+                        printf("-0x%X", (int8_t)(-instr.disp_8));
+                    else
+                        printf("+0x%X", instr.disp_8);
                 }
-                if (!i) printf("eax, ");
-            }
-            printf("0x%X", instr.imm_32);
-            break;
-        case 0xC2:
-            printf("ret\t");
-            printf("0x%04x", instr.imm_16);
-            break;
-        case 0xC3:
-            printf("ret"); // or printf("retn");
-            break;
-        case 0xC7: // mov r/m16/32
-            printf("mov\t");
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
+                if (instr.disp_32) {
+                    if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
+                        printf("-0x%X", (int32_t)(-instr.disp_32));
+                    else
+                        printf("+0x%X", instr.disp_32);
+                }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
+                break;
+            // INC Opcodes (0b0100 0000), skip through
+            case 0x40:
+            case 0x41:
+            case 0x42:
+            case 0x43:
+            case 0x44:
+            case 0x45:
+            case 0x46:
+            case 0x47:
+                printf("inc\t");
+                for (i = 7; i >= 0; i--) {
+                    if ((instr.opcode & i) == i) {
+                        printf("%s", reglist[i]);
+                        break;
+                    }
+                }
+                break;
+            // DEC Opcodes (0b0100 1000), skip through
+            case 0x48:
+            case 0x49:
+            case 0x4A:
+            case 0x4B:
+            case 0x4C:
+            case 0x4D:
+            case 0x4E:
+            case 0x4F:
+                printf("dec\t");
+                for (i = 7; i >= 0; i--) {
+                    if ((instr.opcode & i) == i) {
+                        printf("%s", reglist[i]);
+                        break;
+                    }
+                }
+                break;
+            // Push Opcodes
+            case 0x50:
+            case 0x51:
+            case 0x52:
+            case 0x53:
+            case 0x54:
+            case 0x55:
+            case 0x56:
+            case 0x57:
+                printf("push\t");
+                for (i = 7; i >= 0; i--) {
+                    if ((instr.opcode & i) == i) {
+                        printf("%s", reglist[i]);
+                        break;
+                    }
+                }
+                break;
+            // Pop Opcodes
+            case 0x58:
+            case 0x59:
+            case 0x5A:
+            case 0x5B:
+            case 0x5C:
+            case 0x5D:
+            case 0x5E:
+            case 0x5F:
+                printf("pop\t");
+                for (i = 7; i >= 0; i--) {
+                    if ((instr.opcode & i) == i) {
+                        printf("%s", reglist[i]);
+                        break;
+                    }
+                }
+                break;
+            case 0x68:
+                printf("push\t");
+                printf("0x%X", instr.imm_32);
+                break;
+            case 0x69:
+                printf("imul\t");
+                for (i = 7; i >= 0; i--) { // & 0b00111000
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf("%s, ", reglist[i]);
+                        break;
+                    }
+                }
+
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
+                    printf("dword ptr ");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
+                for (i = 7; i >= 0; i--) { // & 0b00000111
+                    if (((instr.modRegRm & 0b00000111)) == i) {
+                        printf("%s", reglist[i]);
+                        break;
+                    }
+                }
+                if (instr.disp_8) {
+                    if (instr.disp_8 & 0b10000000) // negative
+                        printf("-0x%X", (int8_t)(-instr.disp_8));
+                    else
+                        printf("+0x%X", instr.disp_8);
+                }
+                if (instr.disp_32) {
+                    if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
+                        printf("-0x%X", (int32_t)(-instr.disp_32));
+                    else
+                        printf("+0x%X", instr.disp_32);
+                }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
+                printf(", 0x%X", instr.imm_32);
+                break;
+            case 0x6A:
+                printf("push\t");
+                printf("0x%X", instr.imm_8);
+                break;
+
+            case 0x6C:
+                // TODO: Review
+                // INS[B] 	m8 	DX
+                // "Input from Port to String"
+                printf("ins\t");
+                printf("byte ptr es:[edi],dx");
+                break;
+            case 0x6F:
+                // TODO: Review
+                printf("outs\t");
+                printf("dx, dword ptr ds:[esi]");
+                break;
+
+            // Varying J Opcodes (0b0111 0000), all are [j* rel8]
+            case 0x70:  // JO
+                printf("j0\t");
+                printf("0x%X",
+                    instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
+                break;
+            case 0x71:  // JNO
+                printf("jn0\t");
+                printf("0x%X",
+                    instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
+                break;
+            case 0x72:  // JB / JNAE / JC
+                printf("jb\t");
+                printf("0x%X",
+                    instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
+                break;
+            case 0x73:  // JNB / JAE / JNC
+                printf("jnb\t");
+                printf("0x%X",
+                    instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
+                break;
+            case 0x74:  // JZ / JE
+                // TODO: Bug occurs where this isn't always accurate.
+                // Reduplicate: some clenv-compiled hello world.
+                printf("je\t"); // or, printf("jz\t");
+                printf("0x%X",
+                    instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
+                break;
+            case 0x75:  // JNZ / JNE
+                printf("jne\t"); // or, printf("jnz\t");
+                printf("0x%X",
+                    instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
+                break;
+            case 0x76:  // JBE / JNA
+                printf("jbe\t");
+                printf("0x%X",
+                    instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
+                break;
+            case 0x77:  // JNBE / JA
+                printf("jnbe\t");
+                printf("0x%X",
+                    instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
+                break;
+            case 0x78:  // JS
+                printf("js\t");
+                printf("0x%X",
+                    instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
+                break;
+            case 0x79:  // JNS
+                printf("jns\t");
+                printf("0x%X",
+                    instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
+                break;
+            case 0x7A:  // JP / JPE
+                printf("jp\t");
+                printf("0x%X",
+                    instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
+                break;
+            case 0x7B:  // JNP / JP0
+                printf("jnp\t");
+                printf("0x%X",
+                    instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
+                break;
+            case 0x7C:  // JL / JNGE
+                printf("jl\t");
+                printf("0x%X",
+                    instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
+                break;
+            case 0x7D:  // JNL / JGE
+                printf("jnl\t");
+                printf("0x%X",
+                    instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
+                break;
+            case 0x7E:  // JLE / JNG
+                printf("jle\t");
+                printf("0x%X",
+                    instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
+                break;
+            case 0x7F:  // JNLE / JG
+                printf("rel+%i\n", instr.rel_8);
+                printf("0x%X",
+                    instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
+                break;
+
+            case 0x83: // r/m16/32, imm8
+                switch ((instr.modRegRm & 0b00111000) >> 3) { // & 0b00111000
+                    case 0:
+                        printf("add\t"); break;
+                    case 1:
+                        printf("or\t"); break;
+                    case 2:
+                        printf("adc\t"); break;
+                    case 3:
+                        printf("sbb\t"); break;
+                    case 4:
+                        printf("and\t"); break;
+                    case 5:
+                        printf("sub\t"); break;
+                    case 6:
+                        printf("xor\t"); break;
+                    case 7:
+                        printf("cmp\t"); break;
+                }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
+                    printf("dword ptr ");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
+                for (i = 7; i >= 0; i--) { // & 0b00000111
+                    if (((instr.modRegRm & 0b00000111)) == i) {
+                        printf("%s", reglist[i]);
+                        break;
+                    }
+                }
+                if (instr.disp_8) {
+                    if (instr.disp_8 & 0b10000000) // negative
+                        printf("-0x%X", (int8_t)(-instr.disp_8));
+                    else
+                        printf("+0x%X", instr.disp_8);
+                }
+                if (instr.disp_32) {
+                    if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
+                        printf("-0x%X", (int32_t)(-instr.disp_32));
+                    else
+                        printf("+0x%X", instr.disp_32);
+                }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
+                printf(", 0x%X", instr.imm_8);
+                break;
+            case 0x84:    // TEST r/m8 r8
+                printf("test\t");
+                for (i = 7; i >= 0; i--) { // & 0b00000111
+                    if (((instr.modRegRm & 0b00000111)) == i) {
+                        printf("%s, ", reglist8l[i]);
+                        break;
+                    }
+                }
+                for (i = 7; i >= 0; i--) { // & 0b00111000
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf("%s", reglist8l[i]);
+                        break;
+                    }
+                }
+                break;
+            case 0x85:    // TEST r/m16/32 r16/32
+                printf("test\t");
+                for (i = 7; i >= 0; i--) { // & 0b00000111
+                    if (((instr.modRegRm & 0b00000111)) == i) {
+                        printf("%s, ", reglist[i]);
+                        break;
+                    }
+                }
+                for (i = 7; i >= 0; i--) { // & 0b00111000
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf("%s", reglist[i]);
+                        break;
+                    }
+                }
+                break;
+            case 0x88: // mov r/m8 r8
+                printf("mov\t");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
+                    printf("byte ptr ");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
+                for (i = 7; i >= 0; i--) { // & 0b00000111
+                    if (((instr.modRegRm & 0b00000111)) == i) {
+                        printf("%s", reglist[i]);
+                        break;
+                    }
+                }
+                if (instr.disp_8) {
+                    if (instr.disp_8 & 0b10000000) // negative
+                        printf("-0x%X", (int8_t)(-instr.disp_8));
+                    else
+                        printf("+0x%X", instr.disp_8);
+                }
+                if (instr.disp_32) {
+                    if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
+                        printf("-0x%X", (int32_t)(-instr.disp_32));
+                    else
+                        printf("+0x%X", instr.disp_32);
+                }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
+                for (i = 7; i >= 0; i--) { // & 0b00111000
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf(", %s", reglist8l[i]);
+                        break;
+                    }
+                }
+                break;
+            case 0x89: // mov r/m16/32 r16/32
+                printf("mov\t");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
+                    printf("dword ptr ");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
+                for (i = 7; i >= 0; i--) { // & 0b00000111
+                    if (((instr.modRegRm & 0b00000111)) == i) {
+                        printf("%s", reglist[i]);
+                        break;
+                    }
+                }
+                if (instr.disp_8) {
+                    if (instr.disp_8 & 0b10000000) // negative
+                        printf("-0x%X", (int8_t)(-instr.disp_8));
+                    else
+                        printf("+0x%X", instr.disp_8);
+                }
+                if (instr.disp_32) {
+                    if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
+                        printf("-0x%X", (int32_t)(-instr.disp_32));
+                    else
+                        printf("+0x%X", instr.disp_32);
+                }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
+                for (i = 7; i >= 0; i--) { // & 0b00111000
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf(", %s", reglist[i]);
+                        break;
+                    }
+                }
+                break;
+            case 0x8A:
+                printf("mov\t");
+                for (i = 7; i >= 0; i--) { // & 0b00111000
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf("%s, ", reglist8l[i]);
+                        break;
+                    }
+                }
+                printf("byte ptr ");
+                for (i = 7; i >= 0; i--) { // & 0b00000111
+                    if (((instr.modRegRm & 0b00000111)) == i) {
+                        printf("[%s]", reglist[i]);
+                        break;
+                    }
+                }
+                break;
+            case 0x8B: // mov r16/32 r/m16/32 (flipped order from 0x8A)
+                printf("mov\t");
+                for (i = 7; i >= 0; i--) { // & 0b00111000
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf("%s, ", reglist[i]);
+                        break;
+                    }
+                }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
+                    printf("dword ptr ");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
+                for (i = 7; i >= 0; i--) { // & 0b00000111
+                    if (((instr.modRegRm & 0b00000111)) == i) {
+                        printf("%s", reglist[i]);
+                        break;
+                    }
+                }
+                if (instr.disp_8) {
+                    if (instr.disp_8 & 0b10000000) // negative
+                        printf("-0x%X", (int8_t)(-instr.disp_8));
+                    else
+                        printf("+0x%X", instr.disp_8);
+                }
+                if (instr.disp_32) {
+                    if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
+                        printf("-0x%X", (int32_t)(-instr.disp_32));
+                    else
+                        printf("+0x%X", instr.disp_32);
+                }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
+                break;
+            case 0x8D:
+                printf("lea\t");
+                for (i = 7; i >= 0; i--) { // & 0b00111000
+                    if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                        printf("%s, ", reglist[i]);
+                        break;
+                    }
+                }
+                printf("[");
+                if (instr.scaleIndexBase) {
+                    // TODO: False assumptions to remove later:
+                    // - the Index part of SIB is assumed to be a register
+                    for (i = 7; i >= 0; i--) { // & 0b00000111
+                        if (((instr.modRegRm & 0b00000111)) == i) {
+                            printf("%s+", reglist[i]);
+                            break;
+                        }
+                    }
+                    switch ((instr.scaleIndexBase & 0b11000000) >> 6) { // 0b11000000
+                        case 0x01: // 0b01
+                            printf("(");
+                            for (i = 7; i >= 0; i--) { // & 0b00111000
+                                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                                    printf("%s", reglist[i]);
+                                    break;
+                                }
+                            }
+                            printf("*2)");
+                            break;
+                        case 0x02: // 0b10
+                            printf("(");
+                            for (i = 7; i >= 0; i--) { // & 0b00111000
+                                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                                    printf("%s", reglist[i]);
+                                    break;
+                                }
+                            }
+                            printf("*4)");
+                            break;
+                        case 0x03: // 0b11
+                            printf("(");
+                            for (i = 7; i >= 0; i--) { // & 0b00111000
+                                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                                    printf("%s", reglist[i]);
+                                    break;
+                                }
+                            }
+                            printf("*8)");
+                            break;
+                        default:
+                            for (i = 7; i >= 0; i--) { // & 0b00111000
+                                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                                    printf("%s", reglist[i]);
+                                    break;
+                                }
+                            }
+                            break;
+                    }
+                    if (instr.disp_8) {
+                        if (instr.disp_8 & 0b10000000) // negative
+                            printf("-0x%X", -instr.disp_8);
+                        else
+                            printf("+0x%X", instr.disp_8);
+                    }
+                    if (instr.disp_32)  printf("+0x%X", instr.disp_32);
+                } else {
+                    for (i = 7; i >= 0; i--) { // & 0b00000111
+                        if (((instr.modRegRm & 0b00000111) & i) == i) {
+                            printf("%s", reglist[i]);
+                            break;
+                        }
+                    }
+                    if (instr.disp_8) {
+                        if (instr.disp_8 & 0b10000000) // negative
+                            printf("-0x%X", -instr.disp_8);
+                        else
+                            printf("+0x%X", instr.disp_8);
+                    }
+                    if (instr.disp_32)  printf("+0x%X", instr.disp_32);
+                }
+                printf("]");
+                break;
+
+            case 0x8E:
+                printf("mov\t");
+                printf("?, "); // TODO: Review.
+                printf("word ptr "); // TODO: The computed number is likely wrong.
+                printf("[");
+                if (instr.scaleIndexBase) {
+                    // TODO: False assumptions to remove later:
+                    // - the Index part of SIB is assumed to be a register
+                    for (i = 7; i >= 0; i--) { // & 0b00000111
+                        if (((instr.modRegRm & 0b00000111)) == i) {
+                            printf("%s+", reglist[i]);
+                            break;
+                        }
+                    }
+                    switch ((instr.scaleIndexBase & 0b11000000) >> 6) { // 0b11000000
+                        case 0x01: // 0b01
+                            printf("(");
+                            for (i = 7; i >= 0; i--) { // & 0b00111000
+                                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                                    printf("%s", reglist[i]);
+                                    break;
+                                }
+                            }
+                            printf("*2)");
+                            break;
+                        case 0x02: // 0b10
+                            printf("(");
+                            for (i = 7; i >= 0; i--) { // & 0b00111000
+                                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                                    printf("%s", reglist[i]);
+                                    break;
+                                }
+                            }
+                            printf("*4)");
+                            break;
+                        case 0x03: // 0b11
+                            printf("(");
+                            for (i = 7; i >= 0; i--) { // & 0b00111000
+                                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                                    printf("%s", reglist[i]);
+                                    break;
+                                }
+                            }
+                            printf("*8)");
+                            break;
+                        default:
+                            for (i = 7; i >= 0; i--) { // & 0b00111000
+                                if (((instr.modRegRm & 0b00111000) >> 3) == i) {
+                                    printf("%s", reglist[i]);
+                                    break;
+                                }
+                            }
+                            break;
+                    }
+                    if (instr.disp_8) {
+                        if (instr.disp_8 & 0b10000000) // negative
+                            printf("-0x%X", -instr.disp_8);
+                        else
+                            printf("+0x%X", instr.disp_8);
+                    }
+                    if (instr.disp_32) {
+                        if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
+                            printf("-0x%X", -instr.disp_32);
+                        else
+                            printf("+0x%X", instr.disp_32);
+                    }
+                } else {
+                    for (i = 7; i >= 0; i--) { // & 0b00000111
+                        if (((instr.modRegRm & 0b00000111) & i) == i) {
+                            printf("%s", reglist[i]);
+                            break;
+                        }
+                    }
+                    if (instr.disp_8) {
+                        if (instr.disp_8 & 0b10000000) // negative
+                            printf("-0x%X", -instr.disp_8);
+                        else
+                            printf("+0x%X", instr.disp_8);
+                    }
+                    if (instr.disp_32) {
+                        if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
+                            printf("-0x%X", -instr.disp_32);
+                        else
+                            printf("+0x%X", instr.disp_32);
+                    }
+                }
+                printf("]");
+                break;
+            case 0x90:
+                printf("nop");
+                break;
+
+            case 0x9C:
+                // TODO: Review
+                printf("pushf");
+                break;
+
+            case 0xA1:
+                printf("mov\t");
+                printf("eax, ");
+                printf("ds:"); // TODO: I can't confirm the meaning of this
+                printf("0x%X", instr.disp_32);
+                break;
+            case 0xAD:
+                // NOTE: processor specific instruction. see:
+                // http://ref.x86asm.net/#column_proc
+                // Because is is 03+ (this is 32-bit x86/80386), use lods[d]
+                // lods eax, m16/32
+                printf("lods\t");
+                printf("eax, ");
                 printf("dword ptr ");
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
-            for (i = 7; i >= 0; i--) { // & 0b00000111
-                if (((instr.modRegRm & 0b00000111)) == i) {
-                    printf("%s", reglist[i]);
-                    break;
-                }
-            }
-            if (instr.disp_8) {
+                printf("ds:[esi]");
+                break;
+            case 0xAE:
+                printf("scas\t");
+                printf("al, ");
+                // TODO: Review
+                printf("byte ptr es:[edi]");
+                break;
 
-                if (instr.disp_8 & 0b10000000) // negative
-                    printf("-0x%X", (int8_t)(-instr.disp_8));
-                else
-                    printf("+0x%X", instr.disp_8);
-            }
-            if (instr.disp_32) {
-                if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
-                    printf("-0x%X", (int32_t)(-instr.disp_32));
-                else
-                    printf("+0x%X", instr.disp_32);
-            }
-            if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
-            printf(", 0x%X", instr.imm_32);
-            break;
-        case 0xCC:
-            printf("int\t0x03");
-            break;
-        case 0xD0:
-            // TODO: Review. D1 and other following ones are similar
-            switch ((instr.modRegRm & 0b00111000) >> 3) { // & 0b00111000
-                case 0:
-                    printf("rol\t"); break;
-                case 1:
-                    printf("ror\t"); break;
-                case 2:
-                    printf("rcl\t"); break;
-                case 3:
-                    printf("rcr\t"); break;
-                case 4:
-                    printf("shl\t"); break;
-                case 5:
-                    printf("shr\t"); break;
-                case 6:
-                    printf("sal\t"); break;
-                case 7:
-                    printf("sar\t"); break;
-            }
-            for (i = 7; i >= 0; i--) { // & 0b00000111
-                if (((instr.modRegRm & 0b00000111)) == i) {
-                    printf("%s, ", reglist8l[i]);
-                    break;
+            // Mov, Imm8
+            case 0xB0:
+            case 0xB1:
+            case 0xB2:
+            case 0xB3:
+            case 0xB4:
+            case 0xB5:
+            case 0xB6:
+            case 0xB7:
+                printf("mov\t");
+                for (i = 7; i >= 0; i--) {
+                    if ((instr.opcode & i) == i) {
+                        printf("%s, ", reglist8l[i]);
+                        break;
+                    }
                 }
-            }
-            printf("1");
-            break;
-        case 0xDB: // again; incomplete and wrong way of handling
-            switch (instr.modRegRm) {
-                case 0xE2:
-                    printf("fnclex");
-                    break;
-                default:
-                    printf("0xDB opcode undefined");
-                    break;
-            }
-            break;
-        case 0xE3:
-            printf("jecxz\t");
-            if (instr.rel_8 & 0b10000000)
-                printf("0x%X",
-                    instr.numInstrBytes + instr.relativeOff + (int8_t)instr.rel_8);
-            else
-                printf("0x%X",
-                    instr.numInstrBytes + instr.relativeOff + instr.rel_8);
+                printf("0x%X", instr.imm_8);
+                break;
+            // Mov, Imm32
+            case 0xB8:
+            case 0xB9:
+            case 0xBA:
+            case 0xBB:
+            case 0xBC:
+            case 0xBD:
+            case 0xBE:
+            case 0xBF:
+                printf("mov\t");
+                for (i = 7; i >= 0; i--) {
+                    if ((instr.opcode & i) == i) {
+                        printf("%s, ", reglist[i]);
+                        break;
+                    }
+                    if (!i) printf("eax, ");
+                }
+                printf("0x%X", instr.imm_32);
+                break;
+            case 0xC2:
+                printf("ret\t");
+                printf("0x%04x", instr.imm_16);
+                break;
+            case 0xC3:
+                printf("ret"); // or printf("retn");
+                break;
+            case 0xC7: // mov r/m16/32
+                printf("mov\t");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
+                    printf("dword ptr ");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
+                for (i = 7; i >= 0; i--) { // & 0b00000111
+                    if (((instr.modRegRm & 0b00000111)) == i) {
+                        printf("%s", reglist[i]);
+                        break;
+                    }
+                }
+                if (instr.disp_8) {
 
-            break;
-        case 0xE8:
-            printf("call\t");
-            printf("0x%X",
-                instr.rel_32 + instr.numInstrBytes + instr.relativeOff);
-            break;
-        case 0xEE:
-            // TODO: Review.
-            printf("out\t");
-            printf("dx, al");
-            break;
-        default:
-            printf("undefined opcode");
-            break;
+                    if (instr.disp_8 & 0b10000000) // negative
+                        printf("-0x%X", (int8_t)(-instr.disp_8));
+                    else
+                        printf("+0x%X", instr.disp_8);
+                }
+                if (instr.disp_32) {
+                    if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
+                        printf("-0x%X", (int32_t)(-instr.disp_32));
+                    else
+                        printf("+0x%X", instr.disp_32);
+                }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
+                printf(", 0x%X", instr.imm_32);
+                break;
+            case 0xCC:
+                printf("int\t0x03");
+                break;
+            case 0xD0:
+                // TODO: Review. D1 and other following ones are similar
+                switch ((instr.modRegRm & 0b00111000) >> 3) { // & 0b00111000
+                    case 0:
+                        printf("rol\t"); break;
+                    case 1:
+                        printf("ror\t"); break;
+                    case 2:
+                        printf("rcl\t"); break;
+                    case 3:
+                        printf("rcr\t"); break;
+                    case 4:
+                        printf("shl\t"); break;
+                    case 5:
+                        printf("shr\t"); break;
+                    case 6:
+                        printf("sal\t"); break;
+                    case 7:
+                        printf("sar\t"); break;
+                }
+                for (i = 7; i >= 0; i--) { // & 0b00000111
+                    if (((instr.modRegRm & 0b00000111)) == i) {
+                        printf("%s, ", reglist8l[i]);
+                        break;
+                    }
+                }
+                printf("1");
+                break;
+            case 0xDB: // again; incomplete and wrong way of handling
+                switch (instr.modRegRm) {
+                    case 0xE2:
+                        printf("fnclex");
+                        break;
+                    default:
+                        printf("0xDB opcode undefined");
+                        break;
+                }
+                break;
+            case 0xE3:
+                printf("jecxz\t");
+                if (instr.rel_8 & 0b10000000)
+                    printf("0x%X",
+                        instr.numInstrBytes + instr.relativeOff + (int8_t)instr.rel_8);
+                else
+                    printf("0x%X",
+                        instr.numInstrBytes + instr.relativeOff + instr.rel_8);
+
+                break;
+            case 0xE8:
+                printf("call\t");
+                printf("0x%X",
+                    instr.rel_32 + instr.numInstrBytes + instr.relativeOff);
+                break;
+            case 0xE9:
+                printf("jmp\t");
+                printf("0x%X",
+                    instr.rel_32 + instr.numInstrBytes + instr.relativeOff);
+                break;
+            case 0xEE:
+                // TODO: Review.
+                printf("out\t");
+                printf("dx, al");
+                break;
+            case 0xFF:
+                switch ((instr.modRegRm & 0b00111000) >> 3) { // & 0b00111000
+                    case 0:
+                        printf("inc\t"); break;
+                    case 1:
+                        printf("dec\t"); break;
+                    case 2:
+                        printf("call\t"); break;
+                    case 3:
+                        printf("callf\t"); break;
+                    case 4:
+                        printf("jmp\t"); break;
+                    case 5:
+                        printf("jmpf\t"); break;
+                    case 6:
+                        printf("push\t"); break;
+                }
+                printf("dword ptr ds:"); // I don't know why this does this
+                printf("0x%X", instr.rel_32);
+                break;
+            default:
+                printf("undefined opcode");
+                break;
+        }
+    }
+    else
+    {
+        switch (instr.opcode2) {
+            case 0x00:
+                switch ((instr.modRegRm & 0b00111000) >> 3) { // & 0b00111000
+                    case 0:
+                        printf("sldt\t"); break;
+                    case 1:
+                        printf("str\t"); break;
+                    case 2:
+                        printf("lldt\t"); break;
+                    case 3:
+                        printf("ltr\t"); break;
+                    case 4:
+                        printf("verr\t"); break;
+                    case 5:
+                        printf("verw\t"); break;
+                }
+                printf("word ptr ");
+                for (i = 7; i >= 0; i--) { // & 0b00000111
+                    if (((instr.modRegRm & 0b00000111)) == i) {
+                        printf("[%s]", reglist[i]);
+                        break;
+                    }
+                }
+                break;
+            default:
+                printf("undefined 2-byte opcode");
+                break;
+        }
     }
 
 
