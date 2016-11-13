@@ -913,6 +913,7 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                     break;
                 case 0x6A:    // PUSH imm8
                     instr.imm_8               = code[byteCounter+1];
+                    instr.instructionBytes[i++] = code[byteCounter+1];
                     break;
                 case 0x6B:    // IMUL r16/32 r/m16/32 imm8
                     break;
@@ -946,8 +947,94 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                 // (0b1000 0000)
                 // the exact operation depends on the opcode extension 0-7
                 case 0x80: // * r/m8 imm8
+                    instr.modRegRm            = code[byteCounter+1];
+                    instr.instructionBytes[i++] = code[byteCounter+1];
+                    if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) {
+                        if ((instr.modRegRm & INDIR_ADDR8) == INDIR_ADDR8)
+                        {
+                            instr.disp_8 = code[byteCounter+2];
+                            instr.instructionBytes[i++] = code[byteCounter+2];
+
+                            instr.imm_8               = code[byteCounter+3];
+                            instr.instructionBytes[i++] = code[byteCounter+3];
+                        }
+                        if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
+                            instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
+                            instr.instructionBytes[i++] = code[byteCounter+2];
+                            instr.instructionBytes[i++] = code[byteCounter+3];
+                            instr.instructionBytes[i++] = code[byteCounter+4];
+                            instr.instructionBytes[i++] = code[byteCounter+5];
+
+                            instr.imm_8               = code[byteCounter+6];
+                            instr.instructionBytes[i++] = code[byteCounter+6];
+                        }
+                    } else {
+                        instr.imm_8               = code[byteCounter+2];
+                        instr.instructionBytes[i++] = code[byteCounter+2];
+                    }
+                    break;
                 case 0x81: // * r/m16/32 imm16/32
+                    instr.modRegRm            = code[byteCounter+1];
+                    instr.instructionBytes[i++] = code[byteCounter+1];
+                    if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) {
+                        if ((instr.modRegRm & INDIR_ADDR8) == INDIR_ADDR8)
+                        {
+                            instr.disp_8 = code[byteCounter+2];
+                            instr.instructionBytes[i++] = code[byteCounter+2];
+
+                            instr.imm_32 = *(uint32_t*)&code[byteCounter+3];
+                            instr.instructionBytes[i++] = code[byteCounter+3];
+                            instr.instructionBytes[i++] = code[byteCounter+4];
+                            instr.instructionBytes[i++] = code[byteCounter+5];
+                            instr.instructionBytes[i++] = code[byteCounter+6];
+                        }
+                        if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
+                            instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
+                            instr.instructionBytes[i++] = code[byteCounter+2];
+                            instr.instructionBytes[i++] = code[byteCounter+3];
+                            instr.instructionBytes[i++] = code[byteCounter+4];
+                            instr.instructionBytes[i++] = code[byteCounter+5];
+
+                            instr.imm_32 = *(uint32_t*)&code[byteCounter+6];
+                            instr.instructionBytes[i++] = code[byteCounter+6];
+                            instr.instructionBytes[i++] = code[byteCounter+7];
+                            instr.instructionBytes[i++] = code[byteCounter+8];
+                            instr.instructionBytes[i++] = code[byteCounter+9];
+                        }
+                    } else {
+                        instr.imm_32 = *(uint32_t*)&code[byteCounter+2];
+                        instr.instructionBytes[i++] = code[byteCounter+2];
+                        instr.instructionBytes[i++] = code[byteCounter+3];
+                        instr.instructionBytes[i++] = code[byteCounter+4];
+                        instr.instructionBytes[i++] = code[byteCounter+5];
+                    }
+                    break;
                 case 0x82: // * r/m8 imm8
+                    instr.modRegRm            = code[byteCounter+1];
+                    instr.instructionBytes[i++] = code[byteCounter+1];
+                    if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) {
+                        if ((instr.modRegRm & INDIR_ADDR8) == INDIR_ADDR8)
+                        {
+                            instr.disp_8 = code[byteCounter+2];
+                            instr.instructionBytes[i++] = code[byteCounter+2];
+
+                            instr.imm_8               = code[byteCounter+3];
+                            instr.instructionBytes[i++] = code[byteCounter+3];
+                        }
+                        if ((instr.modRegRm & INDIR_ADDR32) == INDIR_ADDR32) {
+                            instr.disp_32 = *(uint32_t*)&code[byteCounter+2];
+                            instr.instructionBytes[i++] = code[byteCounter+2];
+                            instr.instructionBytes[i++] = code[byteCounter+3];
+                            instr.instructionBytes[i++] = code[byteCounter+4];
+                            instr.instructionBytes[i++] = code[byteCounter+5];
+
+                            instr.imm_8               = code[byteCounter+6];
+                            instr.instructionBytes[i++] = code[byteCounter+6];
+                        }
+                    } else {
+                        instr.imm_8               = code[byteCounter+2];
+                        instr.instructionBytes[i++] = code[byteCounter+2];
+                    }
                     break;
                 case 0x83: // * r/m16/32 imm8
                     // 83 ec 3c                sub    esp,0x3c
@@ -1220,8 +1307,11 @@ void disassemble_x86(char* name, int RVA, const unsigned char* code,
                     instr.instructionBytes[i++] = code[byteCounter+4];
                     break;
                 case 0xAA:
+                    break;
                 case 0xAB:
+                    break;
                 case 0xAC:
+                    break;
                 case 0xAD:
                     break;
                 case 0xAE:
@@ -2260,7 +2350,135 @@ void printInstruction(struct Instruction instr, int debug)
                 printf("0x%X",
                     instr.rel_8 + instr.numInstrBytes + instr.relativeOff);
                 break;
-
+            case 0x80: // r/m8, imm8
+                switch ((instr.modRegRm & 0b00111000) >> 3) { // & 0b00111000
+                    case 0:
+                        printf("add\t"); break;
+                    case 1:
+                        printf("or\t"); break;
+                    case 2:
+                        printf("adc\t"); break;
+                    case 3:
+                        printf("sbb\t"); break;
+                    case 4:
+                        printf("and\t"); break;
+                    case 5:
+                        printf("sub\t"); break;
+                    case 6:
+                        printf("xor\t"); break;
+                    case 7:
+                        printf("cmp\t"); break;
+                }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
+                    printf("byte ptr ");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
+                for (i = 7; i >= 0; i--) { // & 0b00000111
+                    if (((instr.modRegRm & 0b00000111)) == i) {
+                        printf("%s", reglist[i]);
+                        break;
+                    }
+                }
+                if (instr.disp_8) {
+                    if (instr.disp_8 & 0b10000000) // negative
+                        printf("-0x%X", (int8_t)(-instr.disp_8));
+                    else
+                        printf("+0x%X", instr.disp_8);
+                }
+                if (instr.disp_32) {
+                    if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
+                        printf("-0x%X", (int32_t)(-instr.disp_32));
+                    else
+                        printf("+0x%X", instr.disp_32);
+                }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
+                printf(", 0x%X", instr.imm_8);
+                break;
+            case 0x81: // r/m16/32, imm16/32
+                switch ((instr.modRegRm & 0b00111000) >> 3) { // & 0b00111000
+                    case 0:
+                        printf("add\t"); break;
+                    case 1:
+                        printf("or\t"); break;
+                    case 2:
+                        printf("adc\t"); break;
+                    case 3:
+                        printf("sbb\t"); break;
+                    case 4:
+                        printf("and\t"); break;
+                    case 5:
+                        printf("sub\t"); break;
+                    case 6:
+                        printf("xor\t"); break;
+                    case 7:
+                        printf("cmp\t"); break;
+                }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
+                    printf("dword ptr ");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
+                for (i = 7; i >= 0; i--) { // & 0b00000111
+                    if (((instr.modRegRm & 0b00000111)) == i) {
+                        printf("%s", reglist[i]);
+                        break;
+                    }
+                }
+                if (instr.disp_8) {
+                    if (instr.disp_8 & 0b10000000) // negative
+                        printf("-0x%X", (int8_t)(-instr.disp_8));
+                    else
+                        printf("+0x%X", instr.disp_8);
+                }
+                if (instr.disp_32) {
+                    if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
+                        printf("-0x%X", (int32_t)(-instr.disp_32));
+                    else
+                        printf("+0x%X", instr.disp_32);
+                }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
+                printf(", 0x%X", instr.imm_32);
+                break;
+            case 0x82: // r/m8, imm8
+                switch ((instr.modRegRm & 0b00111000) >> 3) { // & 0b00111000
+                    case 0:
+                        printf("add\t"); break;
+                    case 1:
+                        printf("or\t"); break;
+                    case 2:
+                        printf("adc\t"); break;
+                    case 3:
+                        printf("sbb\t"); break;
+                    case 4:
+                        printf("and\t"); break;
+                    case 5:
+                        printf("sub\t"); break;
+                    case 6:
+                        printf("xor\t"); break;
+                    case 7:
+                        printf("cmp\t"); break;
+                }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR)
+                    printf("byte ptr ");
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("[");
+                for (i = 7; i >= 0; i--) { // & 0b00000111
+                    if (((instr.modRegRm & 0b00000111)) == i) {
+                        printf("%s", reglist[i]);
+                        break;
+                    }
+                }
+                if (instr.disp_8) {
+                    if (instr.disp_8 & 0b10000000) // negative
+                        printf("-0x%X", (int8_t)(-instr.disp_8));
+                    else
+                        printf("+0x%X", instr.disp_8);
+                }
+                if (instr.disp_32) {
+                    if (instr.disp_32 & 0b10000000000000000000000000000000) // negative
+                        printf("-0x%X", (int32_t)(-instr.disp_32));
+                    else
+                        printf("+0x%X", instr.disp_32);
+                }
+                if ((instr.modRegRm & DIRECT_ADDR) != DIRECT_ADDR) printf("]");
+                printf(", 0x%X", instr.imm_8);
+                break;
             case 0x83: // r/m16/32, imm8
                 switch ((instr.modRegRm & 0b00111000) >> 3) { // & 0b00111000
                     case 0:
@@ -2507,7 +2725,12 @@ void printInstruction(struct Instruction instr, int debug)
                         else
                             printf("+0x%X", instr.disp_8);
                     }
-                    if (instr.disp_32)  printf("+0x%X", instr.disp_32);
+                    if (instr.disp_32) {
+                        if (instr.disp_32 & 0b10000000000000000000000000000000)
+                            printf("-0x%X", -instr.disp_32);
+                        else
+                            printf("+0x%X", instr.disp_32);
+                    }
                 } else {
                     for (i = 7; i >= 0; i--) { // & 0b00000111
                         if (((instr.modRegRm & 0b00000111) & i) == i) {
@@ -2521,7 +2744,12 @@ void printInstruction(struct Instruction instr, int debug)
                         else
                             printf("+0x%X", instr.disp_8);
                     }
-                    if (instr.disp_32)  printf("+0x%X", instr.disp_32);
+                    if (instr.disp_32) {
+                        if (instr.disp_32 & 0b10000000000000000000000000000000)
+                            printf("-0x%X", -instr.disp_32);
+                        else
+                            printf("+0x%X", instr.disp_32);
+                    }
                 }
                 printf("]");
                 break;
@@ -2628,6 +2856,17 @@ void printInstruction(struct Instruction instr, int debug)
                 printf("eax, ");
                 printf("ds:"); // TODO: I can't confirm the meaning of this
                 printf("0x%X", instr.disp_32);
+                break;
+            case 0xAA:
+                // TODO: Review
+                printf("stos\t");
+                printf("byte ptr ");
+                printf("es:[edi], al");
+            case 0xAB:
+                // TODO: Review
+                printf("stos\t");
+                printf("dword ptr ");
+                printf("es:[edi], eax");
                 break;
             case 0xAD:
                 // NOTE: processor specific instruction. see:
