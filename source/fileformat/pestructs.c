@@ -33,12 +33,12 @@ void printCOFFHeader(struct COFFHeader header)
 {
     printf("COFF Header:\n\
       \tMachine \t\t= 0x%X\n\
-      \tNumberOfSections \t= %d\n\
+      \tNumberOfSections \t= 0x%X\n\
       \tTimeDateStamp \t\t= 0x%X\n\
       \tPointerToSymbolTable \t= 0x%X\n\
       \tNumberOfSymbols \t= 0x%X\n\
-      \tSizeOfOptionalHeader \t= %d\n\
-      \tCharacteristics \t= %d\n",
+      \tSizeOfOptionalHeader \t= 0x%X\n\
+      \tCharacteristics \t= 0x%X\n",
       header.Machine, header.NumberOfSections, header.TimeDateStamp,
       header.PointerToSymbolTable, header.NumberOfSymbols,
       header.SizeOfOptionalHeader,
